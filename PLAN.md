@@ -44,6 +44,7 @@ Two processes, one config:
 | Secrets | DPAPI `LocalMachine` scope — encrypted at rest in `config.json` |
 | Concurrency | Parallel by default; per-endpoint "serialize" flag forces a queue |
 | IP allowlist | Per-endpoint list of IPs and CIDR subnets; empty = all allowed; checked **before** auth |
+| Outbound callbacks | Optional per-endpoint callback URL; service POSTs run result after async runs (and optionally after sync). Pre-configured only — no caller-supplied URLs. |
 
 ## Solution layout
 
@@ -70,6 +71,10 @@ webhook-server/
 │  │   │   ├─ ProcessExecutor.cs     (single impl, varies argv per ExecutorType)
 │  │   │   ├─ ArgTemplateRenderer.cs ({{body.x}}, {{header.X-Foo}}, {{query.bar}})
 │  │   │   └─ ConcurrencyGate.cs     (per-endpoint SemaphoreSlim when serialize=true)
+│  │   ├─ Callbacks/
+│  │   │   ├─ CallbackConfig.cs      (Url, Method, AuthMode, Secret, retry/timeout)
+│  │   │   ├─ CallbackDispatcher.cs  (background queue, retry w/ exponential backoff + jitter)
+│  │   │   └─ CallbackPayload.cs     (runId, endpoint, exitCode, stdout/stderr, timings)
 │  │   ├─ Storage/
 │  │   │   ├─ ConfigStore.cs         (load/save JSON, atomic write)
 │  │   │   └─ DpapiSecret.cs         (Protect/Unprotect LocalMachine)
@@ -130,7 +135,8 @@ webhook-server/
 9. Dispatch:
    - **Sync mode**: await process exit (with `Timeout` cancellation token). Return `200` (or `502` on non-zero exit, configurable) with body `{ exitCode, stdout, stderr, durationMs }`.
    - **Async mode**: fire-and-forget Task; return `202 Accepted` with `{ runId }`. Output goes to log + visible in GUI.
-10. Always log: timestamp, slug, effective client IP, IP-allowlist result, auth result, exit code, duration, stdout/stderr (truncated). Serilog → daily rolling file.
+10. **Outbound callback** (if configured for this endpoint): enqueue a `CallbackPayload` to `CallbackDispatcher`. For async endpoints this is the only way the original caller can learn the result. For sync endpoints it's optional (off by default) and useful for fan-out / audit sinks.
+11. Always log: timestamp, slug, effective client IP, IP-allowlist result, auth result, exit code, duration, stdout/stderr (truncated), callback delivery status. Serilog → daily rolling file.
 
 ## Argument template syntax
 
@@ -141,6 +147,53 @@ Simple `{{path}}` substitution. Path grammar:
 - `{{route.slug}}` — route values.
 
 Missing paths render as empty string. Each `{{...}}` becomes one argv token (already-quoted handling done by `ProcessStartInfo.ArgumentList`). No expression evaluation — keep it dumb so it can't be a sandbox escape vector.
+
+## Outbound callbacks
+
+Each endpoint optionally has a `Callback` block. When present, the service POSTs the run result to a pre-configured URL after the script finishes. Required for async endpoints if the caller wants to know what happened; optional for sync endpoints (where the result is already returned in the HTTP response).
+
+`CallbackConfig` fields:
+
+- `Url` — full URL the dispatcher POSTs to.
+- `Method` — default `POST` (allow `PUT` for systems that prefer it).
+- `AuthMode` — `None` | `Bearer` | `Hmac`. Mirrors the inbound auth design — same code paths reused.
+- `Secret` — DPAPI-encrypted (bearer token, or HMAC shared secret).
+- `HmacAlgorithm` / `HmacHeaderName` / `HmacPrefix` / `HmacEncoding` — when `AuthMode = Hmac`. Defaults match the inbound HMAC defaults so a sender that accepts GitHub-style signatures works out of the box.
+- `TimeoutSeconds` — default `30`.
+- `MaxAttempts` — default `5`. Backoff is exponential (1s, 2s, 4s, 8s, 16s) with ±25% jitter.
+- `IncludeStdout` / `IncludeStderr` — default `true`. Allow turning off for endpoints whose output is sensitive or huge. Truncation cap (`MaxOutputBytes`, default `64KB`) applies regardless.
+- `Trigger` — `OnComplete` (default — fires whether script succeeded or failed) | `OnSuccess` | `OnFailure`.
+
+Payload shape (`application/json; charset=utf-8`):
+
+```json
+{
+  "runId": "8f4e...",
+  "endpoint": "deploy",
+  "startedAt": "2026-05-07T18:22:11.103Z",
+  "completedAt": "2026-05-07T18:22:13.811Z",
+  "durationMs": 2708,
+  "exitCode": 0,
+  "succeeded": true,
+  "stdout": "...",
+  "stderr": "",
+  "stdoutTruncated": false,
+  "stderrTruncated": false
+}
+```
+
+When `AuthMode = Hmac`, the HMAC is computed over the **raw serialized JSON body bytes** with the configured algorithm and added as the configured header (e.g. `X-Hub-Signature-256: sha256=...`).
+
+`CallbackDispatcher`:
+
+- Single `BackgroundService` with a bounded `Channel<CallbackPayload>` queue (default capacity 1024; overflow drops oldest with a warning log).
+- Uses a singleton `HttpClient` (no per-request allocation, follows redirects only on 3xx-with-Location for safety).
+- Per-attempt timeout = `TimeoutSeconds`. Total deadline = `MaxAttempts * (TimeoutSeconds + max-backoff)`.
+- Retries on network failure, 408, 425, 429, 5xx. Honors `Retry-After` if present, capped at 60s.
+- All attempts logged: outbound URL, status code, attempt number, latency, final disposition (`delivered` / `dropped` / `gave-up`).
+- GUI surfaces a per-endpoint counter: pending / delivered / failed in last hour.
+
+**No caller-supplied callback URLs.** The endpoint config is the only source. Accepting a `?callback=` parameter from the request would turn the server into an SSRF gadget — easy to point at internal admin endpoints or cloud-metadata services. Callers who need dynamic fan-out can configure multiple endpoints, or run a small dispatcher script themselves.
 
 ## IP allowlist details
 
@@ -215,6 +268,7 @@ Service builds Kestrel with both an HTTP and HTTPS endpoint when bound. Restarti
 - `src/WebhookServer.Core/Ipc/PipeSecurityFactory.cs` — correct ACL or the GUI will fail silently for non-admins
 - `src/WebhookServer.Service/WebhookHost.cs` — Kestrel setup with `EnableBuffering()` for body capture
 - `src/WebhookServer.Service/WebhookRouter.cs` — auth → context → dispatch pipeline
+- `src/WebhookServer.Core/Callbacks/CallbackDispatcher.cs` — bounded queue + retry/backoff; reuses HMAC code from `Auth/HmacVerifier.cs` for outbound signing
 - `src/WebhookServer.Gui/Views/EndpointEditor.xaml` — the main UX surface; must make adding a "run this script when called" hook feel obvious
 
 ## Verification (end-to-end)
@@ -254,6 +308,14 @@ Run on a Windows machine after `dotnet publish -c Release`:
    - Empty list → all IPs allowed (regression check).
    - With `TrustedProxies` empty, send `X-Forwarded-For: 127.0.0.1` from a non-allowed IP → still 403 (header not trusted).
    - With `TrustedProxies = ["10.10.1.5"]` and request coming from that IP carrying `X-Forwarded-For: 192.168.50.20`, allowlist `["192.168.50.20"]` → 200.
+9b. **Outbound callback (async + HMAC-signed)**:
+   - Stand up a tiny receiver: `python -m http.server 9000` won't verify HMAC, so use a one-off script that prints the body and signature. Or another endpoint on this same server.
+   - Configure an async endpoint with callback: `Url = http://localhost:9000/sink`, `AuthMode = Hmac`, secret `cbsecret`.
+   - Trigger the webhook. After the script finishes, the receiver should see a POST with body `{ runId, exitCode, stdout, ... }` and `X-Hub-Signature-256: sha256=<hmac>`.
+   - Verify HMAC matches by recomputing with the secret — this proves outbound HMAC reuses the inbound code path correctly.
+   - Stop the receiver, fire another async run → callback should retry with exponential backoff and eventually log `gave-up` after `MaxAttempts`.
+   - Bring receiver back up before `MaxAttempts` exhausts → next retry delivers successfully.
+
 10. **HTTPS**:
     - In GUI, bind a self-signed `.pfx` (`New-SelfSignedCertificate ... -CertStoreLocation Cert:\LocalMachine\My`).
     - `curl -k https://localhost:8443/hook/ping` → 200.
