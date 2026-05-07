@@ -1,0 +1,87 @@
+# webhook-server
+
+A Windows-native webhook server that runs PowerShell, PowerShell Core, cmd / `.bat`, or arbitrary executables in response to incoming HTTP requests. Endpoints are configured in a desktop GUI; the actual server runs as a Windows Service so it survives reboots and works without anyone logged in.
+
+**Status:** planning complete, implementation pending. See [PLAN.md](PLAN.md) for the full design.
+
+## Highlights
+
+- **Many endpoints, one service.** Each webhook is a configured URL slug mapped to a script or command.
+- **Per-endpoint auth.** Pick HMAC signature (GitHub/Stripe-style), bearer token, or none.
+- **Per-endpoint IP allowlist.** Restrict by IP or CIDR (IPv4 + IPv6). Empty list = open. Checked before auth.
+- **Flexible execution.** Windows PowerShell 5.1, PowerShell 7+, cmd / `.bat`, or any `.exe`.
+- **Flexible input.** Any combination of: JSON body to stdin, query/headers as env vars, `{{template}}` arg expansion.
+- **Sync or async per endpoint.** Sync returns exit code + stdout/stderr; async returns 202 immediately.
+- **Service-first.** Always-on Windows Service. The WPF GUI is a thin config/monitor client over a named pipe.
+- **HTTPS optional.** Bind a `.pfx` or cert-store thumbprint from the GUI; HTTP works out of the box.
+- **Secrets at rest.** Tokens and HMAC secrets are encrypted via DPAPI (LocalMachine scope) in `config.json`.
+
+## Architecture
+
+```
++------------------+  named pipe   +------------------------------+
+|   WPF GUI app    | <----------> |  Windows Service              |
+|  (config/monitor)|               |  - Kestrel: webhook listener |
++------------------+               |  - Named-pipe admin server   |
+                                   |  - Executor pool             |
+                                   |  - Serilog file logging      |
+                                   +------------------------------+
+                                            ^
+                            C:\ProgramData\WebhookServer\
+                            - config.json   (DPAPI-encrypted secrets)
+                            - logs\*.log
+```
+
+## Project layout (planned)
+
+```
+WebhookServer.sln
+src/
+  WebhookServer.Core/      class lib: models, auth, execution, storage, IPC
+  WebhookServer.Service/   .NET 8 Worker Service (hosts Kestrel + admin pipe)
+  WebhookServer.Gui/       WPF (.NET 8) MVVM config/monitor client
+scripts/
+  install-service.ps1
+  uninstall-service.ps1
+```
+
+## Requirements
+
+- Windows 10 / 11 or Windows Server 2019+
+- .NET 8 SDK to build, .NET 8 Runtime (or self-contained publish) to run
+- Administrator rights to install the service and to run the GUI (the admin named pipe is ACL'd to SYSTEM + Administrators)
+
+## Building (on Windows)
+
+```powershell
+dotnet restore
+dotnet build -c Release
+dotnet publish src/WebhookServer.Service -c Release -r win-x64 --self-contained
+dotnet publish src/WebhookServer.Gui     -c Release -r win-x64 --self-contained
+```
+
+## Installing the service (on Windows)
+
+```powershell
+# from an elevated PowerShell prompt
+sc.exe create WebhookServer binPath= "C:\Program Files\WebhookServer\WebhookServer.Service.exe" start= auto
+sc.exe start  WebhookServer
+```
+
+`scripts/install-service.ps1` will wrap this once implemented.
+
+## Configuration
+
+The service reads `C:\ProgramData\WebhookServer\config.json`. Edit it through the GUI rather than by hand — the GUI handles DPAPI encryption of secrets and validation of IP allowlist entries.
+
+## Out of scope for v1
+
+- Importing/exporting config across machines (DPAPI LocalMachine scope ties decryption to the host).
+- Outbound webhook delivery / retry queues.
+- Per-endpoint rate limiting.
+- Multi-user RBAC for the GUI.
+- Auto-update.
+
+## License
+
+Not yet chosen.
