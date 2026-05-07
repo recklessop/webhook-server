@@ -12,6 +12,7 @@ A Windows-native webhook server that runs PowerShell, PowerShell Core, cmd / `.b
 - **Flexible execution.** Windows PowerShell 5.1, PowerShell 7+, cmd / `.bat`, or any `.exe`.
 - **Flexible input.** Any combination of: JSON body to stdin, query/headers as env vars, `{{template}}` arg expansion.
 - **Sync or async per endpoint.** Sync returns exit code + stdout/stderr; async returns 202 immediately.
+- **Outbound callbacks.** Optional per-endpoint callback URL — service POSTs the run result back after the script finishes. Required for async callers who want to know what happened. HMAC-signed, retried with backoff. Pre-configured only (no SSRF surface from caller-supplied URLs).
 - **Service-first.** Always-on Windows Service. The WPF GUI is a thin config/monitor client over a named pipe.
 - **HTTPS optional.** Bind a `.pfx` or cert-store thumbprint from the GUI; HTTP works out of the box.
 - **Secrets at rest.** Tokens and HMAC secrets are encrypted via DPAPI (LocalMachine scope) in `config.json`.
