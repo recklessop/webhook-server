@@ -86,4 +86,18 @@ public sealed class AdminPipeClient
         var lst = resp.Data.Value.GetProperty("lines").Deserialize<List<LogLine>>(AdminProtocol.JsonOptions);
         return lst ?? new List<LogLine>();
     }
+
+    public async Task<List<BackupEntry>> ListBackupsAsync(CancellationToken ct = default)
+    {
+        var resp = await InvokeAsync(AdminOps.ListBackups, null, ct).ConfigureAwait(false);
+        if (!resp.Ok || resp.Data is null) return new List<BackupEntry>();
+        var lst = resp.Data.Value.GetProperty("backups").Deserialize<List<BackupEntry>>(AdminProtocol.JsonOptions);
+        return lst ?? new List<BackupEntry>();
+    }
+
+    public Task<AdminResponse> RestoreBackupAsync(string fileName, CancellationToken ct = default) =>
+        InvokeAsync(AdminOps.RestoreBackup, new RestoreBackupArgs { FileName = fileName }, ct);
+
+    public Task<AdminResponse> ImportConfigAsync(ServerConfig config, CancellationToken ct = default) =>
+        InvokeAsync(AdminOps.ImportConfig, config, ct);
 }

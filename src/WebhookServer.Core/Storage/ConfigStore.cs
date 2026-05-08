@@ -38,6 +38,25 @@ public sealed class ConfigStore
         var dir = System.IO.Path.GetDirectoryName(Path);
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
 
+        // Snapshot the previous config (if any) into the backups folder before
+        // overwriting. Cheap insurance against typos in the GUI.
+        if (File.Exists(Path) && !string.IsNullOrEmpty(dir))
+        {
+            try
+            {
+                var backupsDir = System.IO.Path.Combine(dir, "backups");
+                Directory.CreateDirectory(backupsDir);
+                var stamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
+                var backupPath = System.IO.Path.Combine(backupsDir, $"config-{stamp}.json");
+                File.Copy(Path, backupPath, overwrite: false);
+                PruneBackups(backupsDir, retain: 30);
+            }
+            catch
+            {
+                // Backup is best-effort; don't fail the save if it can't write.
+            }
+        }
+
         var tmp = Path + ".tmp";
         await using (var fs = File.Create(tmp))
         {
@@ -47,6 +66,17 @@ public sealed class ConfigStore
 
         // Atomic replace on the same volume.
         File.Move(tmp, Path, overwrite: true);
+    }
+
+    private static void PruneBackups(string backupsDir, int retain)
+    {
+        var stale = new DirectoryInfo(backupsDir).GetFiles("config-*.json")
+            .OrderByDescending(f => f.Name)
+            .Skip(retain);
+        foreach (var f in stale)
+        {
+            try { f.Delete(); } catch { }
+        }
     }
 
     public static void ClearPlaintexts(ServerConfig config)

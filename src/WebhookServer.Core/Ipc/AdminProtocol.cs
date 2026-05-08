@@ -23,6 +23,21 @@ public static class AdminOps
     public const string BindHttps = "bind-https";
     public const string RestartListener = "restart-listener";
     public const string Ping = "ping";
+    public const string ListBackups = "list-backups";
+    public const string RestoreBackup = "restore-backup";
+    public const string ImportConfig = "import-config";
+}
+
+public sealed class BackupEntry
+{
+    public string FileName { get; set; } = "";
+    public DateTimeOffset SavedAt { get; set; }
+    public long SizeBytes { get; set; }
+}
+
+public sealed class RestoreBackupArgs
+{
+    public string FileName { get; set; } = "";
 }
 
 public sealed class AdminRequest

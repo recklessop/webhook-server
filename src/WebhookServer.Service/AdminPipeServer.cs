@@ -202,9 +202,64 @@ internal sealed class AdminPipeServer : BackgroundService
                 return AdminResponse.Success(new { lines });
             }
 
+            case AdminOps.ListBackups:
+            {
+                var entries = ListBackups();
+                return AdminResponse.Success(new { backups = entries });
+            }
+
+            case AdminOps.RestoreBackup:
+            {
+                var args = DeserializeData<RestoreBackupArgs>(request) ?? throw new ArgumentException("missing fileName");
+                var restored = await RestoreBackupAsync(args.FileName, ct).ConfigureAwait(false);
+                _logger.LogInformation("Restored config from backup {File}", args.FileName);
+                return AdminResponse.Success(SafeSnapshotForWire(restored));
+            }
+
+            case AdminOps.ImportConfig:
+            {
+                var incoming = DeserializeData<ServerConfig>(request) ?? throw new ArgumentException("missing config payload");
+                MergeWithExistingSecrets(incoming, _state.Snapshot());
+                await _state.ReplaceAsync(incoming, ct).ConfigureAwait(false);
+                _logger.LogInformation("Config imported ({Count} endpoints)", incoming.Endpoints.Count);
+                return AdminResponse.Success(SafeSnapshotForWire(_state.Snapshot()));
+            }
+
             default:
                 return AdminResponse.Failure($"unknown op '{request.Op}'");
         }
+    }
+
+    private static List<BackupEntry> ListBackups()
+    {
+        var dir = Path.Combine(ServicePaths.DataRoot, "backups");
+        if (!Directory.Exists(dir)) return new List<BackupEntry>();
+        return new DirectoryInfo(dir).GetFiles("config-*.json")
+            .OrderByDescending(f => f.Name)
+            .Take(50)
+            .Select(f => new BackupEntry
+            {
+                FileName = f.Name,
+                SavedAt = f.LastWriteTimeUtc,
+                SizeBytes = f.Length,
+            })
+            .ToList();
+    }
+
+    private async Task<ServerConfig> RestoreBackupAsync(string fileName, CancellationToken ct)
+    {
+        // Refuse anything that tries to escape the backups directory.
+        if (fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            throw new ArgumentException("invalid file name");
+        var backupPath = Path.Combine(ServicePaths.DataRoot, "backups", fileName);
+        if (!File.Exists(backupPath))
+            throw new FileNotFoundException("backup not found", fileName);
+
+        await using var fs = File.OpenRead(backupPath);
+        var cfg = await JsonSerializer.DeserializeAsync<ServerConfig>(fs, ConfigJson.Pretty, ct).ConfigureAwait(false)
+                  ?? throw new InvalidOperationException("backup file was empty");
+        await _state.ReplaceAsync(cfg, ct).ConfigureAwait(false);
+        return _state.Snapshot();
     }
 
     private ServerConfig CloneSnapshotForEdit()
