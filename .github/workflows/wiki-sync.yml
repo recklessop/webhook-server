@@ -1,0 +1,27 @@
+name: Sync Wiki
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'scripts/sync-wiki.ps1'
+      - '.github/workflows/wiki-sync.yml'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync docs/ to GitHub wiki
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $repo = '${{ github.repository }}'
+          $wikiUrl = "https://x-access-token:$env:GH_TOKEN@github.com/$repo.wiki.git"
+          ./scripts/sync-wiki.ps1 -WikiUrl $wikiUrl

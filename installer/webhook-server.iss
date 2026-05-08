@@ -55,7 +55,9 @@ Source: "{#RepoRoot}publish\service\*"; DestDir: "{app}"; Flags: ignoreversion r
 Source: "{#RepoRoot}publish\gui\*";     DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#RepoRoot}scripts\install-service.ps1";   DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "{#RepoRoot}scripts\uninstall-service.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
+Source: "{#RepoRoot}scripts\examples\*"; DestDir: "{app}\scripts\examples"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#RepoRoot}README.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#RepoRoot}docs\*"; DestDir: "{app}\docs"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#RepoRoot}resources\webhook-server.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
@@ -68,12 +70,55 @@ Filename: "powershell.exe"; \
     Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\scripts\install-service.ps1"" -BinaryPath ""{app}\{#ServiceExeName}"""; \
     StatusMsg: "Installing Windows Service..."; \
     Flags: runhidden
+; Post-install GUI launch. The GUI's app.manifest is requireAdministrator,
+; so launching with shellexec (ShellExecute) honors the manifest and triggers
+; a clean UAC prompt. Using plain CreateProcess via the default Run path
+; would skip the manifest and result in an un-elevated GUI that cannot connect
+; to the admin pipe.
 Filename: "{app}\{#AppExeName}"; \
     Description: "Launch {#AppName}"; \
-    Flags: postinstall nowait skipifsilent
+    Flags: postinstall nowait shellexec skipifsilent
 
 [UninstallRun]
 Filename: "powershell.exe"; \
     Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\scripts\uninstall-service.ps1"""; \
     Flags: runhidden; \
     RunOnceId: "RemoveWebhookService"
+
+[Code]
+function ServiceExists(): Boolean;
+var
+  ResultCode: Integer;
+begin
+  // sc.exe query returns 0 when the service exists, 1060 when it does not.
+  Exec(ExpandConstant('{sys}\sc.exe'), 'query WebhookServer', '', SW_HIDE,
+       ewWaitUntilTerminated, ResultCode);
+  Result := (ResultCode = 0);
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ResultCode: Integer;
+begin
+  Result := '';
+
+  // 1. If the service exists, stop it so its binaries are unlocked before file
+  //    copy. net stop is synchronous (blocks until the service is actually
+  //    stopped), unlike sc stop which is fire-and-forget. Non-zero exit -
+  //    already stopped, missing, dependency error - we ignore; the file copy
+  //    will fail loudly if the binaries are still locked.
+  if ServiceExists() then
+  begin
+    WizardForm.PreparingLabel.Caption := 'Stopping the WebhookServer service...';
+    Exec(ExpandConstant('{sys}\net.exe'), 'stop WebhookServer', '', SW_HIDE,
+         ewWaitUntilTerminated, ResultCode);
+  end;
+
+  // 2. Kill any running GUI / tray instances so their binaries are unlocked too.
+  //    /f forces termination, /im matches by image name, "*" wildcard would be
+  //    risky so we name them explicitly.
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/f /im WebhookServer.Gui.exe',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/f /im WebhookServer.Service.exe',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;

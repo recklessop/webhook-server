@@ -175,39 +175,18 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
-    [ObservableProperty] private System.Collections.ObjectModel.ObservableCollection<BackupEntry> _backups = new();
-
     [RelayCommand]
-    private async Task RefreshBackupsAsync()
+    private void ShowConfigCheckpoints()
     {
-        try
+        var dlg = new Views.ConfigCheckpointsDialog
         {
-            var list = await _client.ListBackupsAsync().ConfigureAwait(false);
-            Application.Current.Dispatcher.Invoke(() =>
-            {
-                Backups.Clear();
-                foreach (var b in list) Backups.Add(b);
-            });
-        }
-        catch { /* ignore - backup listing isn't critical */ }
-    }
-
-    [RelayCommand]
-    private async Task RestoreBackupAsync(BackupEntry? entry)
-    {
-        if (entry is null) return;
-        var ok = MessageBox.Show(
-            $"Restore configuration from {entry.FileName} ({entry.SavedAt:yyyy-MM-dd HH:mm})?\n\nA backup of the current config will be saved first.",
-            "Restore backup",
-            MessageBoxButton.OKCancel,
-            MessageBoxImage.Question);
-        if (ok != MessageBoxResult.OK) return;
-        try
-        {
-            await _client.RestoreBackupAsync(entry.FileName).ConfigureAwait(false);
-            await RefreshAsync().ConfigureAwait(false);
-        }
-        catch (Exception ex) { ShowError("Restore failed", ex); }
+            Owner = Application.Current.MainWindow,
+            DataContext = new ConfigCheckpointsViewModel(_client),
+        };
+        dlg.ShowDialog();
+        // After the dialog closes, the live config may have changed via rollback,
+        // so refresh the main grid.
+        _ = RefreshAsync();
     }
 
     [RelayCommand]
@@ -249,7 +228,7 @@ public sealed partial class MainViewModel : ObservableObject
             if (cfg is null) throw new InvalidOperationException("File did not contain a valid config.");
 
             var ok = MessageBox.Show(
-                $"Replace the current configuration with {dlg.FileName}?\n\nA backup of the current config will be saved first.",
+                $"Replace the current configuration with {dlg.FileName}?\n\nA checkpoint of the current config is saved first, so you can roll back from File → Config Checkpoints.",
                 "Import config",
                 MessageBoxButton.OKCancel,
                 MessageBoxImage.Warning);
@@ -288,6 +267,23 @@ public sealed partial class MainViewModel : ObservableObject
     {
         var dlg = new Views.AboutDialog { Owner = Application.Current.MainWindow };
         dlg.ShowDialog();
+    }
+
+    [RelayCommand]
+    private void OpenDocumentation()
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "https://github.com/recklessop/webhook-server/tree/main/docs",
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            ShowError("Could not open documentation", ex);
+        }
     }
 
     [RelayCommand]

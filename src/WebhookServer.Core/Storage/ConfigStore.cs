@@ -48,8 +48,15 @@ public sealed class ConfigStore
                 Directory.CreateDirectory(backupsDir);
                 var stamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
                 var backupPath = System.IO.Path.Combine(backupsDir, $"config-{stamp}.json");
-                File.Copy(Path, backupPath, overwrite: false);
-                PruneBackups(backupsDir, retain: 30);
+                if (!File.Exists(backupPath))
+                {
+                    File.Copy(Path, backupPath, overwrite: false);
+                    var sidecar = new { description = "Before save", reason = "before-save" };
+                    File.WriteAllText(
+                        System.IO.Path.ChangeExtension(backupPath, ".meta.json"),
+                        JsonSerializer.Serialize(sidecar, ConfigJson.Compact));
+                }
+                PruneBackups(backupsDir, retain: 90);
             }
             catch
             {
@@ -71,11 +78,18 @@ public sealed class ConfigStore
     private static void PruneBackups(string backupsDir, int retain)
     {
         var stale = new DirectoryInfo(backupsDir).GetFiles("config-*.json")
+            .Where(f => !f.Name.EndsWith(".meta.json", StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(f => f.Name)
             .Skip(retain);
         foreach (var f in stale)
         {
-            try { f.Delete(); } catch { }
+            try
+            {
+                f.Delete();
+                var sidecar = System.IO.Path.ChangeExtension(f.FullName, ".meta.json");
+                if (File.Exists(sidecar)) File.Delete(sidecar);
+            }
+            catch { }
         }
     }
 
