@@ -62,11 +62,9 @@ jobs:
         shell: pwsh
         run: ./scripts/build-installer.ps1 -VersionOverride ${{ steps.ver.outputs.version }}
 
-      - name: Upload installer artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: WebhookServer-Setup-${{ steps.ver.outputs.version }}
-          path: dist/WebhookServer-Setup-*.exe
+      # actions/upload-artifact@v4 is GitHub-only ("GHESNotSupportedError" on
+      # Gitea). The release-creation step below attaches the .exe via Gitea's
+      # API directly, which is the only place we actually need to surface it.
 
       - name: Create Gitea release with installer attached
         if: startsWith(github.ref, 'refs/tags/v')
