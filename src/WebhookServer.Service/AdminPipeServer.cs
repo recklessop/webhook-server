@@ -255,6 +255,7 @@ internal sealed class AdminPipeServer : BackgroundService
     {
         if (incoming.Bearer is { } a) MergeProtected(a.Secret, prior.Bearer?.Secret);
         if (incoming.Hmac is { } h) MergeProtected(h.Secret, prior.Hmac?.Secret);
+        if (incoming.RunAs is { Password: { } runAsPwd }) MergeProtected(runAsPwd, prior.RunAs?.Password);
         if (incoming.Callback is { } cb)
         {
             if (cb.Bearer is { } cba) MergeProtected(cba.Secret, prior.Callback?.Bearer?.Secret);

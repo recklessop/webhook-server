@@ -53,3 +53,18 @@ public enum HttpsBindingKind
     PfxFile = 1,
     CertStoreThumbprint = 2,
 }
+
+public enum RunAsMode
+{
+    /// <summary>Run as whatever account the service itself runs under (default).</summary>
+    Service = 0,
+
+    /// <summary>Run as a specific username + password (batch logon, no UI).</summary>
+    SpecificUser = 1,
+
+    /// <summary>
+    /// Run in the active console session under whoever is logged in at the keyboard.
+    /// Lets hooks pop interactive UI on the user's desktop.
+    /// </summary>
+    InteractiveUser = 2,
+}

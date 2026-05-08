@@ -42,4 +42,6 @@ public sealed class EndpointConfig
     public bool Serialize { get; set; }
 
     public CallbackConfig? Callback { get; set; }
+
+    public RunAsConfig? RunAs { get; set; }
 }

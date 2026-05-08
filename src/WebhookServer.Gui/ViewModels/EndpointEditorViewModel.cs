@@ -23,6 +23,8 @@ public sealed partial class EndpointEditorViewModel : ObservableObject
         Endpoint = JsonSerializer.Deserialize<EndpointConfig>(json, ConfigJson.Compact)!;
         Endpoint.Bearer ??= new BearerOptions();
         Endpoint.Hmac ??= new HmacOptions();
+        Endpoint.RunAs ??= new RunAsConfig();
+        Endpoint.RunAs.Password ??= new ProtectedString();
         IsNew = isNew;
     }
 
@@ -52,6 +54,58 @@ public sealed partial class EndpointEditorViewModel : ObservableObject
 
     public Visibility HmacVisible =>
         Endpoint.AuthMode == AuthMode.Hmac ? Visibility.Visible : Visibility.Collapsed;
+
+    public Array RunAsModes { get; } = Enum.GetValues(typeof(RunAsMode));
+
+    public RunAsMode SelectedRunAsMode
+    {
+        get => Endpoint.RunAs?.Mode ?? RunAsMode.Service;
+        set
+        {
+            Endpoint.RunAs ??= new RunAsConfig();
+            if (Endpoint.RunAs.Mode == value) return;
+            Endpoint.RunAs.Mode = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(SpecificUserVisible));
+        }
+    }
+
+    public Visibility SpecificUserVisible =>
+        SelectedRunAsMode == RunAsMode.SpecificUser ? Visibility.Visible : Visibility.Collapsed;
+
+    public string RunAsUsername
+    {
+        get => Endpoint.RunAs?.Username ?? "";
+        set
+        {
+            Endpoint.RunAs ??= new RunAsConfig();
+            Endpoint.RunAs.Username = string.IsNullOrEmpty(value) ? null : value;
+            OnPropertyChanged();
+        }
+    }
+
+    public string RunAsPassword
+    {
+        get => Endpoint.RunAs?.Password?.Plaintext ?? "";
+        set
+        {
+            Endpoint.RunAs ??= new RunAsConfig();
+            Endpoint.RunAs.Password ??= new ProtectedString();
+            Endpoint.RunAs.Password.Plaintext = string.IsNullOrEmpty(value) ? null : value;
+            OnPropertyChanged();
+        }
+    }
+
+    public bool RunAsLoadProfile
+    {
+        get => Endpoint.RunAs?.LoadProfile ?? false;
+        set
+        {
+            Endpoint.RunAs ??= new RunAsConfig();
+            Endpoint.RunAs.LoadProfile = value;
+            OnPropertyChanged();
+        }
+    }
 
     public string AllowedClientsText
     {

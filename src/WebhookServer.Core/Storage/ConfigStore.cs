@@ -55,6 +55,7 @@ public sealed class ConfigStore
         {
             ClearOne(ep.Bearer?.Secret);
             ClearOne(ep.Hmac?.Secret);
+            ClearOne(ep.RunAs?.Password);
             if (ep.Callback is { } cb)
             {
                 ClearOne(cb.Bearer?.Secret);
@@ -76,6 +77,7 @@ public sealed class ConfigStore
         {
             DecryptOne(ep.Bearer?.Secret);
             DecryptOne(ep.Hmac?.Secret);
+            DecryptOne(ep.RunAs?.Password);
             if (ep.Callback is { } cb)
             {
                 DecryptOne(cb.Bearer?.Secret);
@@ -91,6 +93,7 @@ public sealed class ConfigStore
         {
             EncryptOne(ep.Bearer?.Secret);
             EncryptOne(ep.Hmac?.Secret);
+            EncryptOne(ep.RunAs?.Password);
             if (ep.Callback is { } cb)
             {
                 EncryptOne(cb.Bearer?.Secret);

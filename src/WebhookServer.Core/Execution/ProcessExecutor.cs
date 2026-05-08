@@ -1,9 +1,13 @@
 using System.Diagnostics;
+using System.Runtime.Versioning;
+using System.Security;
 using System.Text;
+using WebhookServer.Core.Execution.Native;
 using WebhookServer.Core.Models;
 
 namespace WebhookServer.Core.Execution;
 
+[SupportedOSPlatform("windows")]
 public sealed class ProcessExecutor : IExecutor
 {
     /// <summary>Per-stream cap on captured output (excess is dropped and StdoutTruncated set).</summary>
@@ -12,23 +16,40 @@ public sealed class ProcessExecutor : IExecutor
     public async Task<ExecutionResult> RunAsync(EndpointConfig endpoint, ExecutionContext ctx, CancellationToken ct)
     {
         var startedAt = DateTimeOffset.UtcNow;
-        var psi = BuildStartInfo(endpoint, ctx);
+        var mode = endpoint.RunAs?.Mode ?? RunAsMode.Service;
+        return mode switch
+        {
+            RunAsMode.InteractiveUser => await RunInteractiveAsync(endpoint, ctx, startedAt, ct).ConfigureAwait(false),
+            _ => await RunWithProcessAsync(endpoint, ctx, startedAt, ct).ConfigureAwait(false),
+        };
+    }
+
+    // ---------------- Process path: handles Service (default) and SpecificUser. ----------------
+
+    private async Task<ExecutionResult> RunWithProcessAsync(EndpointConfig endpoint, ExecutionContext ctx, DateTimeOffset startedAt, CancellationToken ct)
+    {
+        var (psi, envVars) = BuildStartInfo(endpoint, ctx);
+        foreach (var (k, v) in envVars)
+            psi.Environment[k] = v;
+
+        if (endpoint.RunAs?.Mode == RunAsMode.SpecificUser)
+        {
+            try { ApplySpecificUser(psi, endpoint.RunAs); }
+            catch (Exception ex) { return Failed(ctx.RunId, startedAt, ex.Message); }
+        }
 
         using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
 
         try
         {
             if (!process.Start())
-            {
                 return Failed(ctx.RunId, startedAt, "process failed to start");
-            }
         }
         catch (Exception ex)
         {
             return Failed(ctx.RunId, startedAt, $"launch error: {ex.Message}");
         }
 
-        // stdin
         if (endpoint.DataPassing.StdinJson)
         {
             try
@@ -42,15 +63,14 @@ public sealed class ProcessExecutor : IExecutor
             }
             finally
             {
-                try { process.StandardInput.Close(); } catch { /* swallow */ }
+                try { process.StandardInput.Close(); } catch { }
             }
         }
         else
         {
-            try { process.StandardInput.Close(); } catch { /* swallow */ }
+            try { process.StandardInput.Close(); } catch { }
         }
 
-        // Capture stdout/stderr in parallel, with per-stream cap.
         var stdoutTask = ReadCappedAsync(process.StandardOutput, ct);
         var stderrTask = ReadCappedAsync(process.StandardError, ct);
 
@@ -66,8 +86,8 @@ public sealed class ProcessExecutor : IExecutor
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
             timedOut = true;
-            try { process.Kill(entireProcessTree: true); } catch { /* swallow */ }
-            try { await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false); } catch { /* swallow */ }
+            try { process.Kill(entireProcessTree: true); } catch { }
+            try { await process.WaitForExitAsync(CancellationToken.None).ConfigureAwait(false); } catch { }
         }
 
         var (stdout, stdoutTrunc) = await stdoutTask.ConfigureAwait(false);
@@ -87,7 +107,72 @@ public sealed class ProcessExecutor : IExecutor
         };
     }
 
-    private static ProcessStartInfo BuildStartInfo(EndpointConfig endpoint, ExecutionContext ctx)
+    // ---------------- Interactive path: launches into the active console session. ----------------
+
+    private static async Task<ExecutionResult> RunInteractiveAsync(EndpointConfig endpoint, ExecutionContext ctx, DateTimeOffset startedAt, CancellationToken ct)
+    {
+        var (psi, envVars) = BuildStartInfo(endpoint, ctx);
+
+        InteractiveProcessLauncher.LaunchResult launch;
+        try
+        {
+            launch = InteractiveProcessLauncher.Launch(new InteractiveProcessLauncher.LaunchOptions
+            {
+                FileName = psi.FileName,
+                Arguments = psi.ArgumentList.ToList(),
+                WorkingDirectory = string.IsNullOrEmpty(psi.WorkingDirectory) ? null : psi.WorkingDirectory,
+                ExtraEnvVars = envVars,
+                StdinBytes = endpoint.DataPassing.StdinJson ? ctx.BodyBytes : null,
+            });
+        }
+        catch (Exception ex)
+        {
+            return Failed(ctx.RunId, startedAt, $"interactive launch error: {ex.Message}");
+        }
+
+        try
+        {
+            var stdoutTask = ReadCappedAsync(launch.Stdout, ct);
+            var stderrTask = ReadCappedAsync(launch.Stderr, ct);
+
+            var timeout = TimeSpan.FromSeconds(Math.Max(1, endpoint.TimeoutSeconds));
+            bool timedOut = false;
+            int exitCode = -1;
+            try
+            {
+                exitCode = await InteractiveProcessLauncher.WaitAsync(launch.ProcessHandle, timeout, ct).ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                timedOut = true;
+                InteractiveProcessLauncher.Kill(launch.ProcessHandle);
+            }
+
+            var (stdout, stdoutTrunc) = await stdoutTask.ConfigureAwait(false);
+            var (stderr, stderrTrunc) = await stderrTask.ConfigureAwait(false);
+
+            return new ExecutionResult
+            {
+                RunId = ctx.RunId,
+                ExitCode = timedOut ? -1 : exitCode,
+                Stdout = stdout,
+                Stderr = stderr,
+                StdoutTruncated = stdoutTrunc,
+                StderrTruncated = stderrTrunc,
+                StartedAt = startedAt,
+                CompletedAt = DateTimeOffset.UtcNow,
+                TimedOut = timedOut,
+            };
+        }
+        finally
+        {
+            launch.Dispose();
+        }
+    }
+
+    // ---------------- Shared psi construction. ----------------
+
+    private static (ProcessStartInfo psi, Dictionary<string, string> envVars) BuildStartInfo(EndpointConfig endpoint, ExecutionContext ctx)
     {
         var psi = new ProcessStartInfo
         {
@@ -131,18 +216,19 @@ public sealed class ProcessExecutor : IExecutor
                 psi.ArgumentList.Add(arg);
         }
 
+        var envVars = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["WEBHOOK_RUN_ID"] = ctx.RunId,
+            ["WEBHOOK_SLUG"] = ctx.Slug,
+        };
+
         if (endpoint.DataPassing.EnvVars)
         {
-            foreach (var (k, v) in ctx.Headers)
-                psi.Environment[$"WEBHOOK_HEADER_{Sanitize(k)}"] = v;
-            foreach (var (k, v) in ctx.Query)
-                psi.Environment[$"WEBHOOK_QUERY_{Sanitize(k)}"] = v;
+            foreach (var (k, v) in ctx.Headers) envVars[$"WEBHOOK_HEADER_{Sanitize(k)}"] = v;
+            foreach (var (k, v) in ctx.Query) envVars[$"WEBHOOK_QUERY_{Sanitize(k)}"] = v;
         }
 
-        psi.Environment["WEBHOOK_RUN_ID"] = ctx.RunId;
-        psi.Environment["WEBHOOK_SLUG"] = ctx.Slug;
-
-        return psi;
+        return (psi, envVars);
     }
 
     private static void AddPwshArgs(ProcessStartInfo psi, EndpointConfig endpoint)
@@ -175,6 +261,32 @@ public sealed class ProcessExecutor : IExecutor
         return endpoint.InlineCommand ?? "";
     }
 
+    private static void ApplySpecificUser(ProcessStartInfo psi, RunAsConfig runAs)
+    {
+        if (string.IsNullOrEmpty(runAs.Username))
+            throw new InvalidOperationException("RunAs.Username is required when Mode = SpecificUser");
+        if (runAs.Password?.Plaintext is not { Length: > 0 } password)
+            throw new InvalidOperationException("RunAs.Password is required when Mode = SpecificUser");
+
+        var (domain, user) = ParseUserSpec(runAs.Username);
+        psi.UserName = user;
+        if (!string.IsNullOrEmpty(domain)) psi.Domain = domain;
+
+        var ss = new SecureString();
+        foreach (var ch in password) ss.AppendChar(ch);
+        ss.MakeReadOnly();
+        psi.Password = ss;
+
+        psi.LoadUserProfile = runAs.LoadProfile;
+    }
+
+    private static (string Domain, string User) ParseUserSpec(string spec)
+    {
+        var bs = spec.IndexOf('\\');
+        if (bs > 0) return (spec.Substring(0, bs), spec.Substring(bs + 1));
+        return ("", spec);
+    }
+
     private static string Sanitize(string key)
     {
         var sb = new StringBuilder(key.Length);
@@ -203,7 +315,6 @@ public sealed class ProcessExecutor : IExecutor
             catch (IOException) { break; }
             if (n == 0) break;
 
-            // Cheap byte estimate (ASCII-ish); good enough as a guard rail.
             if (!truncated)
             {
                 if (byteEstimate + n > MaxOutputBytes)
@@ -218,7 +329,6 @@ public sealed class ProcessExecutor : IExecutor
                     byteEstimate += n;
                 }
             }
-            // Else keep draining without storing to keep the pipe from blocking.
         }
 
         return (sb.ToString(), truncated);
