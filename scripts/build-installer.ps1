@@ -89,11 +89,22 @@ $dist = Join-Path $repoRoot 'dist'
 New-Item -ItemType Directory -Path $dist -Force | Out-Null
 
 Write-Host "Compiling installer with $iscc"
-# /Qp gives quiet output but still prints the line each source file matches,
-# which surfaces the exact source path that ISCC fails on (the default mode
-# only logs "The system cannot find the path specified." with no detail).
-& $iscc "/DAppVersion=$version" "/Qp" $iss
-if ($LASTEXITCODE -ne 0) { throw 'Inno Setup compile failed' }
+# Run ISCC from the .iss directory with just the bare filename. When invoked
+# with a deeply-nested absolute path on the act-runner host (under
+# %SystemRoot%\System32\config\systemprofile\...), ISCC sometimes prints a
+# generic "The system cannot find the path specified." before it touches any
+# source files. cd-ing first sidesteps it.
+$issDir  = Split-Path $iss -Parent
+$issName = Split-Path $iss -Leaf
+Push-Location $issDir
+try {
+    Write-Host "  cwd=$issDir"
+    & $iscc "/DAppVersion=$version" $issName
+    $exit = $LASTEXITCODE
+} finally {
+    Pop-Location
+}
+if ($exit -ne 0) { throw "Inno Setup compile failed (exit $exit)" }
 
 $out = Get-Item (Join-Path $dist "WebhookServer-Setup-$version.exe")
 Write-Host ""
