@@ -1,0 +1,102 @@
+name: Release (Gitea)
+
+# Lives in .gitea/workflows/ so it runs on Gitea Actions only. The GitHub-side
+# release lives in .github/workflows/release.yml.
+#
+# Triggered automatically on v* tag pushes; can also be invoked manually via
+# workflow_dispatch with a version override (useful for testing the runner
+# without bumping the project version).
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (e.g. 0.1.4). Defaults to Directory.Build.props.'
+        required: false
+
+jobs:
+  build-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Resolve version
+        id: ver
+        shell: pwsh
+        run: |
+          if ('${{ github.event_name }}' -eq 'push') {
+            $v = '${{ github.ref_name }}'.TrimStart('v')
+          } elseif ('${{ inputs.version }}') {
+            $v = '${{ inputs.version }}'
+          } else {
+            [xml]$p = Get-Content Directory.Build.props
+            $v = $p.Project.PropertyGroup.Version
+          }
+          "version=$v" | Out-File $env:GITHUB_OUTPUT -Append
+          Write-Host "Building version $v"
+
+      - name: Restore + test
+        shell: pwsh
+        run: |
+          dotnet restore WebhookServer.sln
+          dotnet test WebhookServer.sln -c Release
+
+      - name: Ensure Inno Setup is installed
+        shell: pwsh
+        run: |
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue) -and `
+              -not (Test-Path 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe') -and `
+              -not (Test-Path 'C:\Program Files\Inno Setup 6\ISCC.exe')) {
+            choco install innosetup --no-progress -y
+          }
+
+      - name: Build installer
+        shell: pwsh
+        run: ./scripts/build-installer.ps1 -VersionOverride ${{ steps.ver.outputs.version }}
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WebhookServer-Setup-${{ steps.ver.outputs.version }}
+          path: dist/WebhookServer-Setup-*.exe
+
+      - name: Create Gitea release with installer attached
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GITEA_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version   = '${{ steps.ver.outputs.version }}'
+          $tag       = '${{ github.ref_name }}'
+          $repo      = '${{ github.repository }}'
+          $serverUrl = '${{ github.server_url }}'
+          $apiBase   = "$serverUrl/api/v1/repos/$repo"
+          $headers   = @{ Authorization = "token $env:GITEA_TOKEN" }
+
+          # 1. Create the release.
+          $isPre = $version.StartsWith('0.')
+          $createBody = @{
+            tag_name   = $tag
+            name       = "Webhook Server $version"
+            body       = "Automated build via Gitea Actions runner."
+            draft      = $false
+            prerelease = $isPre
+          } | ConvertTo-Json
+          $rel = Invoke-RestMethod -Uri "$apiBase/releases" -Method Post `
+              -Headers $headers -ContentType 'application/json' -Body $createBody
+          Write-Host "Created release id=$($rel.id) tag=$tag"
+
+          # 2. Attach the installer.
+          $file = Get-Item "dist/WebhookServer-Setup-$version.exe"
+          $uploadUri = "$apiBase/releases/$($rel.id)/assets?name=$($file.Name)"
+          Invoke-RestMethod -Uri $uploadUri -Method Post -Headers $headers `
+              -ContentType 'application/octet-stream' -InFile $file.FullName | Out-Null
+          Write-Host "Uploaded $($file.Name) ($([math]::Round($file.Length / 1MB, 2)) MB) to $tag"
