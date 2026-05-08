@@ -119,7 +119,7 @@ foreach ($ref in $issRefs) {
 Write-Host ""
 
 Write-Host "--- runtime context ---" -ForegroundColor Cyan
-Write-Host "  whoami:        $(whoami)"
+Write-Host "  identity:      $([Security.Principal.WindowsIdentity]::GetCurrent().Name)"
 Write-Host "  USERPROFILE:   $env:USERPROFILE"
 Write-Host "  APPDATA:       $env:APPDATA"
 Write-Host "  LOCALAPPDATA:  $env:LOCALAPPDATA"
