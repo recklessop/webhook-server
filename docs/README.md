@@ -19,11 +19,12 @@ Webhook Server is a Windows service that runs a script (PowerShell, cmd, or any 
 
 ## Recipes (cookbook style)
 
-- [Zerto failover post-script → DNS + service checks](recipes/zerto-pre-post-scripts.md) ← canonical use case
+- [Zerto failover post-script → DNS + service checks](recipes/zerto-pre-post-scripts.md) ← canonical use case (Windows ZVM)
+- [Zerto ZVMA (Kubernetes) pre/post → notify + VM health check](recipes/zerto-zvma-pre-post.md) — same pattern for the in-cluster scripts-service
 - [GitHub-style HMAC-signed webhook](recipes/github-style-hmac.md)
 - [Pop UI on the user's desktop](recipes/ui-on-desktop.md)
 
-The flagship Zerto recipe also ships with a **ready-to-use Zerto-side post-script** at [`scripts/examples/zerto-post-failover.ps1`](../scripts/examples/zerto-post-failover.ps1).
+The flagship Zerto recipe ships with a ready-to-use Zerto-side post-script at [`scripts/examples/zerto-post-failover.ps1`](../scripts/examples/zerto-post-failover.ps1). The ZVMA recipe ships with [`zerto-zvma-send.ps1`](../scripts/examples/zerto-zvma-send.ps1) (sender) plus [`zerto-receiver-notify.ps1`](../scripts/examples/zerto-receiver-notify.ps1) and [`zerto-receiver-vm-healthcheck.ps1`](../scripts/examples/zerto-receiver-vm-healthcheck.ps1) (receivers).
 
 ## Reference
 
