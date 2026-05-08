@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Runtime.Versioning;
-using System.Security;
 using System.Text;
 using WebhookServer.Core.Execution.Native;
 using WebhookServer.Core.Models;
@@ -19,7 +18,8 @@ public sealed class ProcessExecutor : IExecutor
         var mode = endpoint.RunAs?.Mode ?? RunAsMode.Service;
         return mode switch
         {
-            RunAsMode.InteractiveUser => await RunInteractiveAsync(endpoint, ctx, startedAt, ct).ConfigureAwait(false),
+            RunAsMode.InteractiveUser => await RunWithLauncherAsync(endpoint, ctx, startedAt, useActiveConsole: true, ct).ConfigureAwait(false),
+            RunAsMode.SpecificUser => await RunWithLauncherAsync(endpoint, ctx, startedAt, useActiveConsole: false, ct).ConfigureAwait(false),
             _ => await RunWithProcessAsync(endpoint, ctx, startedAt, ct).ConfigureAwait(false),
         };
     }
@@ -31,12 +31,6 @@ public sealed class ProcessExecutor : IExecutor
         var (psi, envVars) = BuildStartInfo(endpoint, ctx);
         foreach (var (k, v) in envVars)
             psi.Environment[k] = v;
-
-        if (endpoint.RunAs?.Mode == RunAsMode.SpecificUser)
-        {
-            try { ApplySpecificUser(psi, endpoint.RunAs); }
-            catch (Exception ex) { return Failed(ctx.RunId, startedAt, ex.Message); }
-        }
 
         using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
 
@@ -107,27 +101,42 @@ public sealed class ProcessExecutor : IExecutor
         };
     }
 
-    // ---------------- Interactive path: launches into the active console session. ----------------
+    // ---------------- Token-based path: InteractiveUser + SpecificUser. ----------------
 
-    private static async Task<ExecutionResult> RunInteractiveAsync(EndpointConfig endpoint, ExecutionContext ctx, DateTimeOffset startedAt, CancellationToken ct)
+    private static async Task<ExecutionResult> RunWithLauncherAsync(EndpointConfig endpoint, ExecutionContext ctx, DateTimeOffset startedAt, bool useActiveConsole, CancellationToken ct)
     {
         var (psi, envVars) = BuildStartInfo(endpoint, ctx);
+        var opts = new InteractiveProcessLauncher.LaunchOptions
+        {
+            FileName = psi.FileName,
+            Arguments = psi.ArgumentList.ToList(),
+            WorkingDirectory = string.IsNullOrEmpty(psi.WorkingDirectory) ? null : psi.WorkingDirectory,
+            ExtraEnvVars = envVars,
+            StdinBytes = endpoint.DataPassing.StdinJson ? ctx.BodyBytes : null,
+        };
 
         InteractiveProcessLauncher.LaunchResult launch;
         try
         {
-            launch = InteractiveProcessLauncher.Launch(new InteractiveProcessLauncher.LaunchOptions
+            if (useActiveConsole)
             {
-                FileName = psi.FileName,
-                Arguments = psi.ArgumentList.ToList(),
-                WorkingDirectory = string.IsNullOrEmpty(psi.WorkingDirectory) ? null : psi.WorkingDirectory,
-                ExtraEnvVars = envVars,
-                StdinBytes = endpoint.DataPassing.StdinJson ? ctx.BodyBytes : null,
-            });
+                launch = InteractiveProcessLauncher.LaunchAsActiveConsoleUser(opts);
+            }
+            else
+            {
+                var runAs = endpoint.RunAs ?? throw new InvalidOperationException("RunAs config missing");
+                if (string.IsNullOrEmpty(runAs.Username))
+                    return Failed(ctx.RunId, startedAt, "RunAs.Username is required when Mode = SpecificUser");
+                if (runAs.Password?.Plaintext is not { Length: > 0 } password)
+                    return Failed(ctx.RunId, startedAt, "RunAs.Password is required when Mode = SpecificUser");
+
+                var (domain, user) = ParseUserSpec(runAs.Username);
+                launch = InteractiveProcessLauncher.LaunchAsSpecificUser(user, password, domain, opts);
+            }
         }
         catch (Exception ex)
         {
-            return Failed(ctx.RunId, startedAt, $"interactive launch error: {ex.Message}");
+            return Failed(ctx.RunId, startedAt, $"launch error: {ex.Message}");
         }
 
         try
@@ -259,25 +268,6 @@ public sealed class ProcessExecutor : IExecutor
         if (!string.IsNullOrEmpty(endpoint.ScriptPath))
             return endpoint.ScriptPath!;
         return endpoint.InlineCommand ?? "";
-    }
-
-    private static void ApplySpecificUser(ProcessStartInfo psi, RunAsConfig runAs)
-    {
-        if (string.IsNullOrEmpty(runAs.Username))
-            throw new InvalidOperationException("RunAs.Username is required when Mode = SpecificUser");
-        if (runAs.Password?.Plaintext is not { Length: > 0 } password)
-            throw new InvalidOperationException("RunAs.Password is required when Mode = SpecificUser");
-
-        var (domain, user) = ParseUserSpec(runAs.Username);
-        psi.UserName = user;
-        if (!string.IsNullOrEmpty(domain)) psi.Domain = domain;
-
-        var ss = new SecureString();
-        foreach (var ch in password) ss.AppendChar(ch);
-        ss.MakeReadOnly();
-        psi.Password = ss;
-
-        psi.LoadUserProfile = runAs.LoadProfile;
     }
 
     private static (string Domain, string User) ParseUserSpec(string spec)

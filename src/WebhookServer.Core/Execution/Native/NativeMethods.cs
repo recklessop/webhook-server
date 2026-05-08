@@ -79,6 +79,19 @@ internal static class NativeMethods
         public uint dwThreadId;
     }
 
+    public const int LOGON32_LOGON_INTERACTIVE = 2;
+    public const int LOGON32_LOGON_BATCH = 4;
+    public const int LOGON32_PROVIDER_DEFAULT = 0;
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    public static extern bool LogonUser(
+        string lpszUsername,
+        string? lpszDomain,
+        string lpszPassword,
+        int dwLogonType,
+        int dwLogonProvider,
+        out IntPtr phToken);
+
     [DllImport("kernel32.dll")]
     public static extern uint WTSGetActiveConsoleSessionId();
 

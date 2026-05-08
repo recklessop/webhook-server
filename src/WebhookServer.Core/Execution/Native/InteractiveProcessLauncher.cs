@@ -43,7 +43,12 @@ internal static class InteractiveProcessLauncher
         }
     }
 
-    public static LaunchResult Launch(LaunchOptions opts)
+    /// <summary>
+    /// Launch into the session of whoever is logged in at the keyboard. Lets hooks
+    /// pop UI on the user's desktop. Caller must be SYSTEM (only SYSTEM can call
+    /// WTSQueryUserToken).
+    /// </summary>
+    public static LaunchResult LaunchAsActiveConsoleUser(LaunchOptions opts)
     {
         var sessionId = WTSGetActiveConsoleSessionId();
         if (sessionId == INVALID_SESSION_ID)
@@ -52,6 +57,44 @@ internal static class InteractiveProcessLauncher
         if (!WTSQueryUserToken(sessionId, out var userToken))
             throw LastError("WTSQueryUserToken (must run as SYSTEM)");
 
+        try { return LaunchWithToken(userToken, opts); }
+        finally { CloseHandle(userToken); }
+    }
+
+    /// <summary>
+    /// Launch under a username/password by calling LogonUser to obtain a token.
+    /// Used instead of psi.UserName/Password because CreateProcessWithLogonW (what
+    /// .NET uses under the hood) refuses to run when the caller is SYSTEM.
+    /// Tries interactive logon first, then batch.
+    /// </summary>
+    public static LaunchResult LaunchAsSpecificUser(string username, string password, string? domain, LaunchOptions opts)
+    {
+        var resolvedDomain = NormalizeDomain(domain);
+        IntPtr token;
+        if (!LogonUser(username, resolvedDomain, password, LOGON32_LOGON_INTERACTIVE, LOGON32_PROVIDER_DEFAULT, out token))
+        {
+            if (!LogonUser(username, resolvedDomain, password, LOGON32_LOGON_BATCH, LOGON32_PROVIDER_DEFAULT, out token))
+            {
+                var who = string.IsNullOrEmpty(domain) ? username : $"{domain}\\{username}";
+                throw LastError($"LogonUser ({who})");
+            }
+        }
+
+        try { return LaunchWithToken(token, opts); }
+        finally { CloseHandle(token); }
+    }
+
+    private static string? NormalizeDomain(string? domain)
+    {
+        if (string.IsNullOrEmpty(domain)) return null;
+        // "." is a common shorthand for "this machine"; LogonUser wants the actual
+        // machine name or null for local accounts.
+        if (domain == ".") return Environment.MachineName;
+        return domain;
+    }
+
+    private static LaunchResult LaunchWithToken(IntPtr sourceToken, LaunchOptions opts)
+    {
         IntPtr primaryToken = IntPtr.Zero;
         IntPtr envBlock = IntPtr.Zero;
         IntPtr stdoutRead = IntPtr.Zero, stdoutWrite = IntPtr.Zero;
@@ -62,7 +105,7 @@ internal static class InteractiveProcessLauncher
 
         try
         {
-            if (!DuplicateTokenEx(userToken, (uint)MAXIMUM_ALLOWED, IntPtr.Zero,
+            if (!DuplicateTokenEx(sourceToken, (uint)MAXIMUM_ALLOWED, IntPtr.Zero,
                     SECURITY_IMPERSONATION_LEVEL.SecurityImpersonation,
                     TOKEN_TYPE.TokenPrimary, out primaryToken))
                 throw LastError("DuplicateTokenEx");
@@ -140,7 +183,6 @@ internal static class InteractiveProcessLauncher
         }
         finally
         {
-            if (userToken != IntPtr.Zero) CloseHandle(userToken);
             if (primaryToken != IntPtr.Zero) CloseHandle(primaryToken);
             if (envBlock != IntPtr.Zero) DestroyEnvironmentBlock(envBlock);
             if (!succeeded)
