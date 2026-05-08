@@ -118,17 +118,57 @@ foreach ($ref in $issRefs) {
 }
 Write-Host ""
 
+Write-Host "--- runtime context ---" -ForegroundColor Cyan
+Write-Host "  whoami:        $(whoami)"
+Write-Host "  USERPROFILE:   $env:USERPROFILE"
+Write-Host "  APPDATA:       $env:APPDATA"
+Write-Host "  LOCALAPPDATA:  $env:LOCALAPPDATA"
+Write-Host "  TEMP:          $env:TEMP"
+$isccDir = Split-Path $iscc -Parent
+Write-Host "  ISCC dir:      $isccDir"
+foreach ($f in @('ISCC.exe','ISCmplr.dll','ISPP.dll','Default.isl','Compil32.exe')) {
+    $p = Join-Path $isccDir $f
+    Write-Host ("    {0,-15} exists={1}" -f $f, (Test-Path $p))
+}
+Write-Host ""
+
+Write-Host "  PS  location (pre):  $((Get-Location).Path)"
+Write-Host "  .NET cwd     (pre):  $([System.IO.Directory]::GetCurrentDirectory())"
+
 Push-Location $issDir
+$savedDotNetCwd = [System.IO.Directory]::GetCurrentDirectory()
+[System.IO.Directory]::SetCurrentDirectory($issDir)
 try {
-    Write-Host "  cwd=$issDir"
+    Write-Host "  PS  location (post): $((Get-Location).Path)"
+    Write-Host "  .NET cwd     (post): $([System.IO.Directory]::GetCurrentDirectory())"
+
+    # Bake the version into a temp .iss and override OutputDir to an absolute
+    # path so nothing in the build depends on cwd resolution.
+    $tempIss = Join-Path $issDir "webhook-server.gen.iss"
+    $issBody = Get-Content $issName -Raw
+    $pattern = '(?s)#ifndef AppVersion\s+#define AppVersion "[^"]*"\s+#endif'
+    if ($issBody -notmatch $pattern) { throw "Could not find #ifndef AppVersion block in $issName" }
+    $issBody = $issBody -replace $pattern, "#define AppVersion `"$version`""
+    Set-Content -Path $tempIss -Value $issBody -Encoding ascii
+    Write-Host "  using $tempIss"
+
     # Capture stdout+stderr together so any error line ISCC emits is visible
     # in the runner log even if the runner's console capture drops one stream.
+    # /O<absolute> overrides OutputDir so ..\dist isn't resolved relative to
+    # whatever cwd ISCC actually inherits.
     $logPath = Join-Path $env:TEMP "iscc-$version.log"
-    & $iscc "/DAppVersion=$version" $issName *>&1 | Tee-Object -FilePath $logPath | ForEach-Object { Write-Host $_ }
+    & $iscc "/O$dist" (Split-Path $tempIss -Leaf) *>&1 | Tee-Object -FilePath $logPath | ForEach-Object { Write-Host $_ }
     $exit = $LASTEXITCODE
     Write-Host "  ISCC exit code: $exit"
-    Write-Host "  ISCC log:       $logPath"
+    Write-Host "  ISCC log path:  $logPath"
+    if (Test-Path $logPath) {
+        Write-Host "  --- iscc log file contents ---"
+        Get-Content $logPath | ForEach-Object { Write-Host "    $_" }
+        Write-Host "  --- end iscc log ---"
+    }
+    Remove-Item $tempIss -ErrorAction SilentlyContinue
 } finally {
+    [System.IO.Directory]::SetCurrentDirectory($savedDotNetCwd)
     Pop-Location
 }
 if ($exit -ne 0) { throw "Inno Setup compile failed (exit $exit)" }
