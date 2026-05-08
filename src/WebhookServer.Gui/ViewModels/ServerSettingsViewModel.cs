@@ -13,7 +13,7 @@ public sealed partial class ServerSettingsViewModel : ObservableObject
     [ObservableProperty] private bool _httpsEnabled;
     [ObservableProperty] private string _httpsMode = "PfxFile";
     [ObservableProperty] private string _pfxPath = "";
-    [ObservableProperty] private string _pfxPasswordInput = "";
+    [ObservableProperty] private string _pfxPassword = "";
     [ObservableProperty] private string _thumbprint = "";
     [ObservableProperty] private string _trustedProxiesText = "";
 
@@ -29,6 +29,7 @@ public sealed partial class ServerSettingsViewModel : ObservableObject
         HttpsPort = b?.Port ?? 8443;
         HttpsMode = b?.Kind == HttpsBindingKind.CertStoreThumbprint ? "Thumbprint" : "PfxFile";
         PfxPath = b?.PfxPath ?? "";
+        PfxPassword = b?.PfxPassword?.Plaintext ?? "";
         Thumbprint = b?.Thumbprint ?? "";
     }
 
@@ -49,8 +50,8 @@ public sealed partial class ServerSettingsViewModel : ObservableObject
         {
             binding.Kind = HttpsBindingKind.PfxFile;
             binding.PfxPath = PfxPath;
-            if (!string.IsNullOrEmpty(PfxPasswordInput))
-                binding.PfxPassword = ProtectedString.FromPlaintext(PfxPasswordInput);
+            if (!string.IsNullOrEmpty(PfxPassword))
+                binding.PfxPassword = ProtectedString.FromPlaintext(PfxPassword);
         }
         return binding;
     }

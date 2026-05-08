@@ -58,7 +58,7 @@
                         <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding PfxPath, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,0"/>
 
                         <TextBlock Grid.Row="3" Text="PFX password" VerticalAlignment="Center" Margin="0,4,0,0"/>
-                        <PasswordBox Grid.Row="3" Grid.Column="1" PasswordChanged="OnPfxPasswordChanged" Margin="0,4,0,0"/>
+                        <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding PfxPassword, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,0" FontFamily="Consolas"/>
 
                         <TextBlock Grid.Row="4" Text="Thumbprint" VerticalAlignment="Center" Margin="0,4,0,0"/>
                         <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding Thumbprint, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,0"/>

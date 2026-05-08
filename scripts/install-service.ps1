@@ -48,23 +48,29 @@ if (-not (Test-Path -LiteralPath $BinaryPath)) {
     throw "Binary not found: $BinaryPath"
 }
 
-# Build sc.exe argv. Note: sc.exe is fussy about spaces — keep "key= value" format.
+# sc.exe argv format: "key= value" — space AFTER equals, none before.
 $obj = $ServiceAccount
 $existing = sc.exe query $ServiceName 2>$null
 
 if ($existing) {
     Write-Host "Service '$ServiceName' already exists; updating binPath and account."
-    sc.exe config $ServiceName binPath= "`"$BinaryPath`"" obj= $obj $(if ($Password) { "password= $Password" }) | Out-Null
-} else {
-    $args = @(
-        'create', $ServiceName,
-        "binPath=", "`"$BinaryPath`"",
-        "DisplayName=", "`"$DisplayName`"",
-        "start=", "auto",
-        "obj=", $obj
+    $configArgs = @(
+        'config', $ServiceName,
+        'binPath=', "`"$BinaryPath`"",
+        'obj=', $obj
     )
-    if ($Password) { $args += @('password=', $Password) }
-    sc.exe @args | Out-Null
+    if ($Password) { $configArgs += @('password=', $Password) }
+    sc.exe @configArgs | Out-Null
+} else {
+    $createArgs = @(
+        'create', $ServiceName,
+        'binPath=', "`"$BinaryPath`"",
+        'DisplayName=', "`"$DisplayName`"",
+        'start=', 'auto',
+        'obj=', $obj
+    )
+    if ($Password) { $createArgs += @('password=', $Password) }
+    sc.exe @createArgs | Out-Null
 }
 
 # Configure failure recovery: restart the service on first/second failure, reset count after a day.

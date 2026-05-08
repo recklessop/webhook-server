@@ -28,6 +28,10 @@
             <Button Content="Delete" Command="{Binding DeleteEndpointCommand}"
                     IsEnabled="{Binding SelectedEndpoint, Converter={StaticResource NotNull}}"/>
             <Separator/>
+            <Button Content="Copy URL" Command="{Binding CopyEndpointUrlCommand}"
+                    IsEnabled="{Binding SelectedEndpoint, Converter={StaticResource NotNull}}"
+                    ToolTip="Copy the full webhook URL for the selected endpoint to the clipboard"/>
+            <Separator/>
             <Button Content="Server Settings…" Command="{Binding EditServerSettingsCommand}"/>
         </ToolBar>
 
@@ -46,6 +50,11 @@
                       CanUserDeleteRows="False"
                       IsReadOnly="True"
                       HeadersVisibility="Column">
+                <DataGrid.RowStyle>
+                    <Style TargetType="DataGridRow">
+                        <EventSetter Event="MouseDoubleClick" Handler="OnRowDoubleClick"/>
+                    </Style>
+                </DataGrid.RowStyle>
                 <DataGrid.Columns>
                     <DataGridTemplateColumn Header="Enabled" Width="80">
                         <DataGridTemplateColumn.CellTemplate>
@@ -56,7 +65,25 @@
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
-                    <DataGridTextColumn Header="Slug" Binding="{Binding Slug}" Width="*"/>
+                    <DataGridTextColumn Header="Slug" Binding="{Binding Slug}" Width="120"/>
+                    <DataGridTemplateColumn Header="URL" Width="*">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate DataType="{x:Type models:EndpointConfig}">
+                                <TextBox IsReadOnly="True"
+                                         BorderThickness="0"
+                                         Background="Transparent"
+                                         Padding="0"
+                                         VerticalAlignment="Center">
+                                    <TextBox.Text>
+                                        <MultiBinding Converter="{StaticResource HookUrl}" Mode="OneWay">
+                                            <Binding Path="Slug"/>
+                                            <Binding Path="DataContext.HttpBaseUrl" RelativeSource="{RelativeSource AncestorType=Window}"/>
+                                        </MultiBinding>
+                                    </TextBox.Text>
+                                </TextBox>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
                     <DataGridTextColumn Header="Auth" Binding="{Binding AuthMode}" Width="80"/>
                     <DataGridTextColumn Header="Executor" Binding="{Binding ExecutorType}" Width="140"/>
                     <DataGridTextColumn Header="Mode" Binding="{Binding ResponseMode}" Width="80"/>
@@ -71,16 +98,20 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <TextBlock Text="Recent log entries" FontWeight="Bold" Margin="6,4"/>
-                    <Button Grid.Column="1" Content="Refresh" Command="{Binding RefreshLogTailCommand}" Margin="6,2"/>
+                    <CheckBox Grid.Column="1" Content="Auto-scroll" IsChecked="{Binding AutoScrollLogs}" VerticalAlignment="Center" Margin="6,2"/>
+                    <Button Grid.Column="2" Content="Refresh" Command="{Binding RefreshLogTailCommand}" Margin="6,2"/>
                 </Grid>
-                <TextBox Text="{Binding LogTail, Mode=OneWay}"
+                <TextBox x:Name="LogTailBox"
+                         Text="{Binding LogTail, Mode=OneWay}"
                          IsReadOnly="True"
                          FontFamily="Consolas"
                          VerticalScrollBarVisibility="Auto"
                          HorizontalScrollBarVisibility="Auto"
-                         TextWrapping="NoWrap"/>
+                         TextWrapping="NoWrap"
+                         TextChanged="OnLogTailChanged"/>
             </DockPanel>
         </Grid>
     </DockPanel>

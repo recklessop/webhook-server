@@ -62,13 +62,19 @@ try
         lifetime.StopApplication();
     };
 
-    app.MapPost("/hook/{slug}", async (string slug, HttpContext http) =>
+    // Accept POST (the standard webhook verb) and GET (so a browser can smoke-test
+    // hooks without curl). GET requests will have an empty body, which the executor
+    // and arg-template renderer handle as if the body were empty JSON.
+    app.MapMethods("/hook/{slug}", new[] { "GET", "POST" }, async (string slug, HttpContext http) =>
     {
         var router = http.RequestServices.GetRequiredService<WebhookRouter>();
         await router.HandleAsync(http, slug);
     });
 
     app.MapGet("/healthz", () => Results.Ok(new { ok = true }));
+
+    // Stop browsers from logging 404s for favicon.ico every time they hit a hook.
+    app.MapGet("/favicon.ico", () => Results.StatusCode(StatusCodes.Status204NoContent));
 
     await app.RunAsync().ConfigureAwait(false);
 }

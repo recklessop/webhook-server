@@ -7,5 +7,6 @@
         <conv:NullToBoolConverter x:Key="NotNull"/>
         <conv:BoolToBrushConverter x:Key="ConnFill"/>
         <conv:StringEqualsConverter x:Key="StringEqualsConverter"/>
+        <conv:HookUrlConverter x:Key="HookUrl"/>
     </Application.Resources>
 </Application>

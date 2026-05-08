@@ -19,12 +19,6 @@ public partial class ServerSettings : Window
         Close();
     }
 
-    private void OnPfxPasswordChanged(object sender, RoutedEventArgs e)
-    {
-        if (DataContext is ServerSettingsViewModel vm && sender is PasswordBox box)
-            vm.PfxPasswordInput = box.Password;
-    }
-
     private void OnModeChecked(object sender, RoutedEventArgs e)
     {
         if (DataContext is ServerSettingsViewModel vm && sender is RadioButton rb && rb.Tag is string tag)

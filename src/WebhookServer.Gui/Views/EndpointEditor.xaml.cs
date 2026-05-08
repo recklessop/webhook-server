@@ -19,15 +19,15 @@ public partial class EndpointEditor : Window
         Close();
     }
 
-    private void OnBearerPasswordChanged(object sender, RoutedEventArgs e)
+    private void OnCopyBearer(object sender, RoutedEventArgs e)
     {
-        if (DataContext is EndpointEditorViewModel vm && sender is PasswordBox box)
-            vm.BearerSecretInput = box.Password;
+        if (DataContext is EndpointEditorViewModel vm && !string.IsNullOrEmpty(vm.BearerSecret))
+            try { Clipboard.SetText(vm.BearerSecret); } catch { /* clipboard busy — silent */ }
     }
 
-    private void OnHmacPasswordChanged(object sender, RoutedEventArgs e)
+    private void OnCopyHmac(object sender, RoutedEventArgs e)
     {
-        if (DataContext is EndpointEditorViewModel vm && sender is PasswordBox box)
-            vm.HmacSecretInput = box.Password;
+        if (DataContext is EndpointEditorViewModel vm && !string.IsNullOrEmpty(vm.HmacSecret))
+            try { Clipboard.SetText(vm.HmacSecret); } catch { /* clipboard busy — silent */ }
     }
 }

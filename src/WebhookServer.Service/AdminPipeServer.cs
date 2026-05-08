@@ -120,6 +120,7 @@ internal sealed class AdminPipeServer : BackgroundService
                 var incoming = DeserializeData<ServerConfig>(request) ?? throw new ArgumentException("missing config payload");
                 MergeWithExistingSecrets(incoming, _state.Snapshot());
                 await _state.ReplaceAsync(incoming, ct).ConfigureAwait(false);
+                _logger.LogInformation("Server config replaced ({Count} endpoints)", incoming.Endpoints.Count);
                 return AdminResponse.Success(SafeSnapshotForWire(_state.Snapshot()));
             }
 
@@ -135,6 +136,7 @@ internal sealed class AdminPipeServer : BackgroundService
                     return AdminResponse.Failure($"slug '{ep.Slug}' already exists");
                 next.Endpoints.Add(ep);
                 await _state.ReplaceAsync(next, ct).ConfigureAwait(false);
+                _logger.LogInformation("Endpoint created: {Slug} ({Id})", ep.Slug, ep.Id);
                 return AdminResponse.Success(ep);
             }
 
@@ -147,6 +149,7 @@ internal sealed class AdminPipeServer : BackgroundService
                 MergeEndpointSecrets(ep, next.Endpoints[idx]);
                 next.Endpoints[idx] = ep;
                 await _state.ReplaceAsync(next, ct).ConfigureAwait(false);
+                _logger.LogInformation("Endpoint updated: {Slug} ({Id})", ep.Slug, ep.Id);
                 return AdminResponse.Success(ep);
             }
 
@@ -157,6 +160,7 @@ internal sealed class AdminPipeServer : BackgroundService
                 var removed = next.Endpoints.RemoveAll(e => e.Id == args.Id);
                 if (removed == 0) return AdminResponse.Failure("endpoint not found");
                 await _state.ReplaceAsync(next, ct).ConfigureAwait(false);
+                _logger.LogInformation("Endpoint deleted: {Id}", args.Id);
                 return AdminResponse.Success();
             }
 
@@ -167,8 +171,10 @@ internal sealed class AdminPipeServer : BackgroundService
                 var next = CloneSnapshotForEdit();
                 var ep = next.Endpoints.FirstOrDefault(e => e.Id == args.Id);
                 if (ep is null) return AdminResponse.Failure("endpoint not found");
-                ep.Enabled = request.Op == AdminOps.EnableEndpoint;
+                var newState = request.Op == AdminOps.EnableEndpoint;
+                ep.Enabled = newState;
                 await _state.ReplaceAsync(next, ct).ConfigureAwait(false);
+                _logger.LogInformation("Endpoint {Slug} {State}", ep.Slug, newState ? "enabled" : "disabled");
                 return AdminResponse.Success(ep);
             }
 
@@ -178,6 +184,8 @@ internal sealed class AdminPipeServer : BackgroundService
                 var next = CloneSnapshotForEdit();
                 next.HttpsBinding = binding;
                 await _state.ReplaceAsync(next, ct).ConfigureAwait(false);
+                _logger.LogInformation("HTTPS binding {Action}",
+                    binding is null || binding.Kind == HttpsBindingKind.None ? "cleared" : $"set ({binding.Kind} on port {binding.Port})");
                 return AdminResponse.Success();
             }
 
@@ -214,16 +222,15 @@ internal sealed class AdminPipeServer : BackgroundService
     }
 
     /// <summary>
-    /// Strip plaintext secrets from a snapshot before sending to the GUI. Encrypted
-    /// blobs are useless to the GUI but harmless; plaintext must never leak.
+    /// Deep-clone the snapshot for the GUI. Plaintext secrets ARE included on the
+    /// wire — the admin pipe is ACL'd to SYSTEM and Administrators, so anyone able
+    /// to read the wire already has full local privilege. Letting the GUI display
+    /// secrets means an admin can recover a lost token without resetting it.
     /// </summary>
     private static ServerConfig SafeSnapshotForWire(ServerConfig snap)
     {
-        // Deep clone via JSON, then null out plaintext on the clone.
         var json = JsonSerializer.Serialize(snap, ConfigJson.Compact);
-        var clone = JsonSerializer.Deserialize<ServerConfig>(json, ConfigJson.Compact)!;
-        ConfigStore.ClearPlaintexts(clone);
-        return clone;
+        return JsonSerializer.Deserialize<ServerConfig>(json, ConfigJson.Compact)!;
     }
 
     /// <summary>

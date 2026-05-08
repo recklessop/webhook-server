@@ -1,5 +1,6 @@
 using System.Runtime.Versioning;
 using System.Text.Json;
+using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using WebhookServer.Core.Models;
@@ -29,6 +30,29 @@ public sealed partial class EndpointEditorViewModel : ObservableObject
     public Array ExecutorTypes { get; } = Enum.GetValues(typeof(ExecutorType));
     public Array ResponseModes { get; } = Enum.GetValues(typeof(ResponseMode));
 
+    /// <summary>
+    /// Proxy for <see cref="EndpointConfig.AuthMode"/> that emits change notifications
+    /// for the visibility flags so the bearer/HMAC sections show/hide reactively.
+    /// </summary>
+    public AuthMode SelectedAuthMode
+    {
+        get => Endpoint.AuthMode;
+        set
+        {
+            if (Endpoint.AuthMode == value) return;
+            Endpoint.AuthMode = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(BearerVisible));
+            OnPropertyChanged(nameof(HmacVisible));
+        }
+    }
+
+    public Visibility BearerVisible =>
+        Endpoint.AuthMode == AuthMode.Bearer ? Visibility.Visible : Visibility.Collapsed;
+
+    public Visibility HmacVisible =>
+        Endpoint.AuthMode == AuthMode.Hmac ? Visibility.Visible : Visibility.Collapsed;
+
     public string AllowedClientsText
     {
         get => string.Join(Environment.NewLine, Endpoint.AllowedClients);
@@ -49,9 +73,9 @@ public sealed partial class EndpointEditorViewModel : ObservableObject
         }
     }
 
-    public string BearerSecretInput
+    public string BearerSecret
     {
-        get => "";
+        get => Endpoint.Bearer?.Secret.Plaintext ?? "";
         set
         {
             Endpoint.Bearer ??= new BearerOptions();
@@ -60,9 +84,9 @@ public sealed partial class EndpointEditorViewModel : ObservableObject
         }
     }
 
-    public string HmacSecretInput
+    public string HmacSecret
     {
-        get => "";
+        get => Endpoint.Hmac?.Secret.Plaintext ?? "";
         set
         {
             Endpoint.Hmac ??= new HmacOptions();

@@ -13,6 +13,21 @@ public sealed class NullToBoolConverter : IValueConverter
         => throw new NotSupportedException();
 }
 
+public sealed class HookUrlConverter : IMultiValueConverter
+{
+    public object Convert(object[] values, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (values.Length < 2) return "";
+        var slug = values[0] as string ?? "";
+        var baseUrl = values[1] as string ?? "";
+        if (string.IsNullOrEmpty(baseUrl) || string.IsNullOrEmpty(slug)) return "";
+        return $"{baseUrl.TrimEnd('/')}/hook/{slug}";
+    }
+
+    public object[] ConvertBack(object? value, Type[] targetTypes, object? parameter, CultureInfo culture)
+        => throw new NotSupportedException();
+}
+
 public sealed class StringEqualsConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)

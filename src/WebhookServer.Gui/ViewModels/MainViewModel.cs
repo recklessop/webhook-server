@@ -4,6 +4,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using WebhookServer.Core.Ipc;
@@ -24,11 +25,19 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private string _connectionStatus = "Disconnected";
     [ObservableProperty] private bool _isConnected;
     [ObservableProperty] private string _logTail = "";
+    [ObservableProperty] private bool _autoScrollLogs = true;
     [ObservableProperty] private ServerConfig _serverConfig = new();
+    [ObservableProperty] private string _httpBaseUrl = "http://localhost:8080";
+    [ObservableProperty] private string? _httpsBaseUrl;
+
+    private readonly DispatcherTimer _logTimer;
 
     public MainViewModel(AdminPipeClient client)
     {
         _client = client;
+        _logTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(3) };
+        _logTimer.Tick += async (_, _) => await RefreshLogTailAsync();
+        _logTimer.Start();
     }
 
     [RelayCommand]
@@ -45,6 +54,12 @@ public sealed partial class MainViewModel : ObservableObject
                 ConnectionStatus = IsConnected
                     ? $"Connected — HTTP {status!.HttpPort}{(status.HttpsPort.HasValue ? $" / HTTPS {status.HttpsPort}" : "")}"
                     : "Disconnected";
+
+                if (status is not null)
+                {
+                    HttpBaseUrl = $"http://localhost:{status.HttpPort}";
+                    HttpsBaseUrl = status.HttpsPort.HasValue ? $"https://localhost:{status.HttpsPort.Value}" : null;
+                }
 
                 Endpoints.Clear();
                 if (config is not null)
@@ -156,6 +171,21 @@ public sealed partial class MainViewModel : ObservableObject
         catch (Exception ex)
         {
             ShowError("Toggle failed", ex);
+        }
+    }
+
+    [RelayCommand]
+    private void CopyEndpointUrl()
+    {
+        if (SelectedEndpoint is null || string.IsNullOrEmpty(HttpBaseUrl)) return;
+        var url = $"{HttpBaseUrl.TrimEnd('/')}/hook/{SelectedEndpoint.Slug}";
+        try
+        {
+            Clipboard.SetText(url);
+        }
+        catch (Exception ex)
+        {
+            ShowError("Copy failed", ex);
         }
     }
 
