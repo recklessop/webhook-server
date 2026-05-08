@@ -142,6 +142,31 @@ try {
     Write-Host "  PS  location (post): $((Get-Location).Path)"
     Write-Host "  .NET cwd     (post): $([System.IO.Directory]::GetCurrentDirectory())"
 
+    # Sanity: compile a minimal .iss right next to ours BEFORE attempting the
+    # real one. Minimal has no #defines, no [Code], no [Files], no compression
+    # tweak - just the absolute floor of what ISCC will accept. If THIS fails
+    # under the same SYSTEM context with the same identical exit/error, the
+    # problem is environmental, not in our .iss content.
+    $minIss = Join-Path $issDir "min-test.iss"
+    @"
+[Setup]
+AppName=MinTest
+AppVersion=1.0
+AppId={{12345678-1234-1234-1234-123456789ABC}
+DefaultDirName={pf}\MinTest
+CreateAppDir=no
+Uninstallable=no
+OutputBaseFilename=mintest
+OutputDir=$dist
+"@ | Set-Content -Path $minIss -Encoding ascii
+    Write-Host ""
+    Write-Host "--- bisect step 1: minimal .iss ---" -ForegroundColor Cyan
+    & $iscc (Split-Path $minIss -Leaf) *>&1 | ForEach-Object { Write-Host "  $_" }
+    $minExit = $LASTEXITCODE
+    Write-Host "  minimal exit: $minExit"
+    Remove-Item $minIss -ErrorAction SilentlyContinue
+    Write-Host ""
+
     # Bake the version into a temp .iss and override OutputDir to an absolute
     # path so nothing in the build depends on cwd resolution.
     $tempIss = Join-Path $issDir "webhook-server.gen.iss"
