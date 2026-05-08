@@ -36,7 +36,7 @@ try
 
     builder.WebHost.ConfigureKestrel(opts =>
     {
-        opts.ListenAnyIP(initialConfig.HttpPort);
+        ConfigureHttp(opts, initialConfig);
         ConfigureHttps(opts, initialConfig.HttpsBinding);
     });
 
@@ -85,6 +85,24 @@ catch (Exception ex)
 finally
 {
     Log.CloseAndFlush();
+}
+
+static void ConfigureHttp(Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions opts, ServerConfig cfg)
+{
+    if (cfg.BindAddresses is { Count: > 0 } binds)
+    {
+        foreach (var entry in binds)
+        {
+            if (System.Net.IPAddress.TryParse(entry, out var ip))
+                opts.Listen(ip, cfg.HttpPort);
+            else
+                Log.Warning("Skipping invalid bind address {Entry}", entry);
+        }
+    }
+    else
+    {
+        opts.ListenAnyIP(cfg.HttpPort);
+    }
 }
 
 static void ConfigureHttps(Microsoft.AspNetCore.Server.Kestrel.Core.KestrelServerOptions opts, HttpsBinding? binding)

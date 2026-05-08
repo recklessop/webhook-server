@@ -57,8 +57,9 @@ public sealed partial class MainViewModel : ObservableObject
 
                 if (status is not null)
                 {
-                    HttpBaseUrl = $"http://localhost:{status.HttpPort}";
-                    HttpsBaseUrl = status.HttpsPort.HasValue ? $"https://localhost:{status.HttpsPort.Value}" : null;
+                    var host = string.IsNullOrEmpty(status.DisplayHost) ? "localhost" : status.DisplayHost;
+                    HttpBaseUrl = $"http://{host}:{status.HttpPort}";
+                    HttpsBaseUrl = status.HttpsPort.HasValue ? $"https://{host}:{status.HttpsPort.Value}" : null;
                 }
 
                 Endpoints.Clear();
@@ -202,6 +203,8 @@ public sealed partial class MainViewModel : ObservableObject
             ServerConfig.HttpPort = vm.HttpPort;
             ServerConfig.TrustedProxies = vm.TrustedProxiesList;
             ServerConfig.HttpsBinding = vm.BuildBinding();
+            ServerConfig.BindAddresses = vm.BindAddressesList;
+            ServerConfig.DisplayHost = vm.DisplayHostValue;
             await _client.InvokeAsync(AdminOps.UpdateConfig, ServerConfig).ConfigureAwait(false);
             await RefreshAsync().ConfigureAwait(false);
         }

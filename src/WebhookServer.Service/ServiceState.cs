@@ -102,6 +102,7 @@ public sealed class ServiceState
     private static bool HasListenerSettingsChanged(ServerConfig oldCfg, ServerConfig newCfg)
     {
         if (oldCfg.HttpPort != newCfg.HttpPort) return true;
+        if (!oldCfg.BindAddresses.SequenceEqual(newCfg.BindAddresses, StringComparer.OrdinalIgnoreCase)) return true;
         var a = oldCfg.HttpsBinding;
         var b = newCfg.HttpsBinding;
         if ((a is null) != (b is null)) return true;
@@ -110,6 +111,7 @@ public sealed class ServiceState
             if (a.Kind != b.Kind || a.Port != b.Port || a.PfxPath != b.PfxPath || a.Thumbprint != b.Thumbprint)
                 return true;
         }
+        // DisplayHost is cosmetic; don't restart for it.
         return false;
     }
 }

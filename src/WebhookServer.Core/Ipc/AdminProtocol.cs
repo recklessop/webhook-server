@@ -52,6 +52,7 @@ public sealed class StatusInfo
     public bool Running { get; set; }
     public int HttpPort { get; set; }
     public int? HttpsPort { get; set; }
+    public string? DisplayHost { get; set; }
     public DateTimeOffset StartedAt { get; set; }
     public int EndpointCount { get; set; }
 }

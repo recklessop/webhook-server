@@ -8,5 +8,6 @@
         <conv:BoolToBrushConverter x:Key="ConnFill"/>
         <conv:StringEqualsConverter x:Key="StringEqualsConverter"/>
         <conv:HookUrlConverter x:Key="HookUrl"/>
+        <conv:InvertBoolConverter x:Key="InvertBool"/>
     </Application.Resources>
 </Application>

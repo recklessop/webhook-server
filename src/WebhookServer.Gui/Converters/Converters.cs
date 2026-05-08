@@ -28,6 +28,15 @@ public sealed class HookUrlConverter : IMultiValueConverter
         => throw new NotSupportedException();
 }
 
+public sealed class InvertBoolConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => value is bool b && !b;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+        => value is bool b && !b;
+}
+
 public sealed class StringEqualsConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)

@@ -104,6 +104,7 @@ internal sealed class AdminPipeServer : BackgroundService
                     Running = true,
                     HttpPort = snap.HttpPort,
                     HttpsPort = snap.HttpsBinding?.Port,
+                    DisplayHost = snap.DisplayHost,
                     StartedAt = _state.StartedAt,
                     EndpointCount = snap.Endpoints.Count,
                 });

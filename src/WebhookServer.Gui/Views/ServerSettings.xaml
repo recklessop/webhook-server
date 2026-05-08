@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:WebhookServer.Gui.ViewModels"
         mc:Ignorable="d"
-        Title="Server Settings" Height="500" Width="540"
+        Title="Server Settings" Height="720" Width="600"
         WindowStartupLocation="CenterOwner"
         d:DataContext="{d:DesignInstance Type=vm:ServerSettingsViewModel}">
     <DockPanel Margin="12">
@@ -14,6 +14,7 @@
             <Button Content="Cancel" Width="80" IsCancel="True"/>
         </StackPanel>
 
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel>
             <GroupBox Header="HTTP" Padding="6">
                 <Grid>
@@ -24,6 +25,41 @@
                     <TextBlock Text="HTTP port" VerticalAlignment="Center"/>
                     <TextBox Grid.Column="1" Text="{Binding HttpPort, UpdateSourceTrigger=PropertyChanged}"/>
                 </Grid>
+            </GroupBox>
+
+            <GroupBox Header="Network" Padding="6" Margin="0,8,0,0">
+                <StackPanel>
+                    <CheckBox Content="Listen on all interfaces (0.0.0.0 + ::)" IsChecked="{Binding ListenAllInterfaces}"/>
+                    <TextBlock Foreground="Gray" FontStyle="Italic" FontSize="11" Margin="20,2,0,0"
+                               Text="Uncheck to bind only to the addresses you select below."/>
+                    <ItemsControl ItemsSource="{Binding Addresses}" Margin="20,4,0,0"
+                                  IsEnabled="{Binding ListenAllInterfaces, Converter={StaticResource InvertBool}}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <CheckBox IsChecked="{Binding IsBound}" Margin="0,1,0,1">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding Address}" FontFamily="Consolas" Width="220"/>
+                                        <TextBlock Text="{Binding Label}" Foreground="Gray" Margin="8,0,0,0"/>
+                                    </StackPanel>
+                                </CheckBox>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <Grid Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="160"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Display URL host" VerticalAlignment="Center"/>
+                        <ComboBox Grid.Column="1" IsEditable="True"
+                                  ItemsSource="{Binding DisplayHostChoices}"
+                                  Text="{Binding DisplayHost, UpdateSourceTrigger=PropertyChanged}"
+                                  FontFamily="Consolas"/>
+                    </Grid>
+                    <TextBlock Foreground="Gray" FontStyle="Italic" FontSize="11" Margin="160,2,0,0"
+                               Text="Used in the URL column and Copy URL button. Cosmetic only - doesn't affect what the server actually accepts."/>
+                </StackPanel>
             </GroupBox>
 
             <GroupBox Header="HTTPS" Padding="6" Margin="0,8,0,0">
@@ -70,5 +106,6 @@
                 <TextBox Text="{Binding TrustedProxiesText, UpdateSourceTrigger=LostFocus}" AcceptsReturn="True" MinHeight="80" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
             </GroupBox>
         </StackPanel>
+        </ScrollViewer>
     </DockPanel>
 </Window>
