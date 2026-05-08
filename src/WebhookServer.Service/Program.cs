@@ -49,6 +49,7 @@ try
     builder.Services.AddSingleton<WebhookRouter>();
     builder.Services.AddHostedService<CallbackBackgroundService>();
     builder.Services.AddHostedService<AdminPipeServer>();
+    builder.Services.AddHostedService<CheckpointScheduler>();
 
     var app = builder.Build();
 

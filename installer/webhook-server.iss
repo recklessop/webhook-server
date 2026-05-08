@@ -55,7 +55,9 @@ Source: "{#RepoRoot}publish\service\*"; DestDir: "{app}"; Flags: ignoreversion r
 Source: "{#RepoRoot}publish\gui\*";     DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#RepoRoot}scripts\install-service.ps1";   DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "{#RepoRoot}scripts\uninstall-service.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
+Source: "{#RepoRoot}scripts\examples\*"; DestDir: "{app}\scripts\examples"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#RepoRoot}README.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#RepoRoot}docs\*"; DestDir: "{app}\docs"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#RepoRoot}resources\webhook-server.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
@@ -68,9 +70,14 @@ Filename: "powershell.exe"; \
     Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\scripts\install-service.ps1"" -BinaryPath ""{app}\{#ServiceExeName}"""; \
     StatusMsg: "Installing Windows Service..."; \
     Flags: runhidden
+; Post-install GUI launch. The GUI's app.manifest is requireAdministrator,
+; so launching with shellexec (ShellExecute) honors the manifest and triggers
+; a clean UAC prompt. Using plain CreateProcess via the default Run path
+; would skip the manifest and result in an un-elevated GUI that cannot connect
+; to the admin pipe.
 Filename: "{app}\{#AppExeName}"; \
     Description: "Launch {#AppName}"; \
-    Flags: postinstall nowait skipifsilent
+    Flags: postinstall nowait shellexec skipifsilent
 
 [UninstallRun]
 Filename: "powershell.exe"; \

@@ -225,9 +225,57 @@ internal sealed class AdminPipeServer : BackgroundService
                 return AdminResponse.Success(SafeSnapshotForWire(_state.Snapshot()));
             }
 
+            case AdminOps.CreateCheckpoint:
+            {
+                var args = DeserializeData<CreateCheckpointArgs>(request);
+                var description = args?.Description;
+                if (string.IsNullOrWhiteSpace(description)) description = "Manual checkpoint";
+                var entry = CreateCheckpoint("manual", description);
+                _logger.LogInformation("Manual checkpoint created: {File} ({Desc})", entry.FileName, description);
+                return AdminResponse.Success(entry);
+            }
+
             default:
                 return AdminResponse.Failure($"unknown op '{request.Op}'");
         }
+    }
+
+    /// <summary>
+    /// Snapshot the current config.json into the backups folder. Used by the
+    /// "Take checkpoint now" GUI action, the midnight scheduler, and the
+    /// auto-on-save hook in ConfigStore. Description is stored in a sidecar
+    /// .meta.json file next to the snapshot so it survives restarts and can
+    /// be rendered in the GUI.
+    /// </summary>
+    public static BackupEntry CreateCheckpoint(string reason, string description)
+    {
+        var configPath = ServicePaths.ConfigPath;
+        if (!File.Exists(configPath))
+            throw new FileNotFoundException("no config.json exists yet to snapshot");
+
+        var dir = Path.Combine(ServicePaths.DataRoot, "backups");
+        Directory.CreateDirectory(dir);
+
+        var stamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
+        var dest = Path.Combine(dir, $"config-{stamp}.json");
+        if (File.Exists(dest))
+            dest = Path.Combine(dir, $"config-{stamp}-{reason}.json");
+
+        File.Copy(configPath, dest);
+
+        // Write the sidecar metadata.
+        var sidecarPath = Path.ChangeExtension(dest, ".meta.json");
+        var sidecar = new { description, reason };
+        File.WriteAllText(sidecarPath, JsonSerializer.Serialize(sidecar, ConfigJson.Compact));
+
+        var info = new FileInfo(dest);
+        return new BackupEntry
+        {
+            FileName = info.Name,
+            SavedAt = info.LastWriteTimeUtc,
+            SizeBytes = info.Length,
+            Description = description,
+        };
     }
 
     private static List<BackupEntry> ListBackups()
@@ -235,6 +283,7 @@ internal sealed class AdminPipeServer : BackgroundService
         var dir = Path.Combine(ServicePaths.DataRoot, "backups");
         if (!Directory.Exists(dir)) return new List<BackupEntry>();
         return new DirectoryInfo(dir).GetFiles("config-*.json")
+            .Where(f => !f.Name.EndsWith(".meta.json", StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(f => f.Name)
             .Take(50)
             .Select(f => new BackupEntry
@@ -242,8 +291,21 @@ internal sealed class AdminPipeServer : BackgroundService
                 FileName = f.Name,
                 SavedAt = f.LastWriteTimeUtc,
                 SizeBytes = f.Length,
+                Description = ReadSidecarDescription(f.FullName),
             })
             .ToList();
+    }
+
+    private static string? ReadSidecarDescription(string snapshotPath)
+    {
+        try
+        {
+            var sidecarPath = Path.ChangeExtension(snapshotPath, ".meta.json");
+            if (!File.Exists(sidecarPath)) return null;
+            using var doc = JsonDocument.Parse(File.ReadAllText(sidecarPath));
+            return doc.RootElement.TryGetProperty("description", out var d) ? d.GetString() : null;
+        }
+        catch { return null; }
     }
 
     private async Task<ServerConfig> RestoreBackupAsync(string fileName, CancellationToken ct)

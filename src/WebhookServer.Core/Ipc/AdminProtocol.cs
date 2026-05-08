@@ -26,6 +26,7 @@ public static class AdminOps
     public const string ListBackups = "list-backups";
     public const string RestoreBackup = "restore-backup";
     public const string ImportConfig = "import-config";
+    public const string CreateCheckpoint = "create-checkpoint";
 }
 
 public sealed class BackupEntry
@@ -33,11 +34,17 @@ public sealed class BackupEntry
     public string FileName { get; set; } = "";
     public DateTimeOffset SavedAt { get; set; }
     public long SizeBytes { get; set; }
+    public string? Description { get; set; }
 }
 
 public sealed class RestoreBackupArgs
 {
     public string FileName { get; set; } = "";
+}
+
+public sealed class CreateCheckpointArgs
+{
+    public string? Description { get; set; }
 }
 
 public sealed class AdminRequest
