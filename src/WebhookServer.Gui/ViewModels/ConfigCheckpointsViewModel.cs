@@ -82,8 +82,14 @@ public sealed partial class ConfigCheckpointsViewModel : ObservableObject
     {
         if (Selected is null) return;
 
+        // Capture before the refresh; the ObservableCollection.Clear() in
+        // RefreshAsync nulls Selected (the original instance is gone from the
+        // collection so the SelectedItem binding clears).
+        var fileName = Selected.FileName;
+        var savedAt  = Selected.SavedAt;
+
         var ok = MessageBox.Show(
-            $"Roll the configuration back to the checkpoint from {Selected.SavedAt.ToLocalTime():yyyy-MM-dd HH:mm:ss}?\n\nThe current configuration is automatically saved as a new checkpoint first, so you can roll forward again.",
+            $"Roll the configuration back to the checkpoint from {savedAt.ToLocalTime():yyyy-MM-dd HH:mm:ss}?\n\nThe current configuration is automatically saved as a new checkpoint first, so you can roll forward again.",
             "Confirm rollback",
             MessageBoxButton.OKCancel,
             MessageBoxImage.Warning);
@@ -91,10 +97,10 @@ public sealed partial class ConfigCheckpointsViewModel : ObservableObject
 
         try
         {
-            await _client.RestoreBackupAsync(Selected.FileName).ConfigureAwait(false);
+            await _client.RestoreBackupAsync(fileName).ConfigureAwait(false);
             await RefreshAsync().ConfigureAwait(false);
             Application.Current.Dispatcher.Invoke(() =>
-                StatusMessage = $"Rolled back to {Selected!.FileName}.");
+                StatusMessage = $"Rolled back to {fileName}.");
         }
         catch (Exception ex)
         {
