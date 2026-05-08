@@ -69,9 +69,10 @@ Filename: "powershell.exe"; \
     Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\scripts\install-service.ps1"" -BinaryPath ""{app}\{#ServiceExeName}"""; \
     StatusMsg: "Installing Windows Service..."; \
     Flags: runhidden
-Filename: "{app}\{#AppExeName}"; \
-    Description: "Launch {#AppName}"; \
-    Flags: postinstall nowait skipifsilent
+; No post-install GUI launch: the GUI is requireAdministrator and the launch
+; from the installer wizard ends up un-elevated for the post-install user, so
+; it would just fail to connect to the admin pipe. The Start Menu shortcut
+; handles the elevation correctly via the embedded manifest.
 
 [UninstallRun]
 Filename: "powershell.exe"; \

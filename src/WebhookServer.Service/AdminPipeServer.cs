@@ -225,9 +225,45 @@ internal sealed class AdminPipeServer : BackgroundService
                 return AdminResponse.Success(SafeSnapshotForWire(_state.Snapshot()));
             }
 
+            case AdminOps.CreateCheckpoint:
+            {
+                var entry = CreateCheckpoint("manual");
+                _logger.LogInformation("Manual checkpoint created: {File}", entry.FileName);
+                return AdminResponse.Success(entry);
+            }
+
             default:
                 return AdminResponse.Failure($"unknown op '{request.Op}'");
         }
+    }
+
+    /// <summary>
+    /// Snapshot the current config.json into the backups folder. Used both by the
+    /// "Take checkpoint now" GUI action and by the midnight scheduler.
+    /// </summary>
+    public static BackupEntry CreateCheckpoint(string reason)
+    {
+        var configPath = ServicePaths.ConfigPath;
+        if (!File.Exists(configPath))
+            throw new FileNotFoundException("no config.json exists yet to snapshot");
+
+        var dir = Path.Combine(ServicePaths.DataRoot, "backups");
+        Directory.CreateDirectory(dir);
+
+        var stamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
+        var dest = Path.Combine(dir, $"config-{stamp}.json");
+        // If we somehow snapshot twice in the same second, append a suffix.
+        if (File.Exists(dest))
+            dest = Path.Combine(dir, $"config-{stamp}-{reason}.json");
+
+        File.Copy(configPath, dest);
+        var info = new FileInfo(dest);
+        return new BackupEntry
+        {
+            FileName = info.Name,
+            SavedAt = info.LastWriteTimeUtc,
+            SizeBytes = info.Length,
+        };
     }
 
     private static List<BackupEntry> ListBackups()

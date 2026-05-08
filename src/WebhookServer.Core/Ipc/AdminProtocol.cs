@@ -26,6 +26,7 @@ public static class AdminOps
     public const string ListBackups = "list-backups";
     public const string RestoreBackup = "restore-backup";
     public const string ImportConfig = "import-config";
+    public const string CreateCheckpoint = "create-checkpoint";
 }
 
 public sealed class BackupEntry
