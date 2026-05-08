@@ -96,11 +96,38 @@ Write-Host "Compiling installer with $iscc"
 # source files. cd-ing first sidesteps it.
 $issDir  = Split-Path $iss -Parent
 $issName = Split-Path $iss -Leaf
+
+# Extra pre-flight: confirm the specific files our .iss references that a
+# trivial test .iss wouldn't (icon, README, scripts) actually exist relative
+# to the .iss directory the way ISCC will resolve them (RepoRoot = ..\).
+Write-Host "--- pre-flight: paths the .iss references via {#RepoRoot} ---" -ForegroundColor Cyan
+$issRefs = @(
+    'resources\webhook-server.ico',
+    'README.md',
+    'scripts\install-service.ps1',
+    'scripts\uninstall-service.ps1',
+    'publish\service',
+    'publish\gui',
+    'docs',
+    'scripts\examples'
+)
+foreach ($ref in $issRefs) {
+    $abs = Join-Path $repoRoot $ref
+    $exists = Test-Path $abs
+    Write-Host ("  {0,-40} exists={1}  ({2})" -f $ref, $exists, $abs)
+}
+Write-Host ""
+
 Push-Location $issDir
 try {
     Write-Host "  cwd=$issDir"
-    & $iscc "/DAppVersion=$version" $issName
+    # Capture stdout+stderr together so any error line ISCC emits is visible
+    # in the runner log even if the runner's console capture drops one stream.
+    $logPath = Join-Path $env:TEMP "iscc-$version.log"
+    & $iscc "/DAppVersion=$version" $issName *>&1 | Tee-Object -FilePath $logPath | ForEach-Object { Write-Host $_ }
     $exit = $LASTEXITCODE
+    Write-Host "  ISCC exit code: $exit"
+    Write-Host "  ISCC log:       $logPath"
 } finally {
     Pop-Location
 }
