@@ -14,6 +14,13 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <ApplicationIcon>..\..\resources\webhook-server.ico</ApplicationIcon>
+    <AssemblyTitle>Webhook Server</AssemblyTitle>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="..\..\resources\webhook-server.ico" Link="webhook-server.ico" />
+    <Resource Include="..\..\resources\webhook-server.png" Link="webhook-server.png" />
+  </ItemGroup>
 
 </Project>
