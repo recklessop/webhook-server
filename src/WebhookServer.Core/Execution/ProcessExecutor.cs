@@ -160,7 +160,11 @@ public sealed class ProcessExecutor : IExecutor
         else
         {
             psi.ArgumentList.Add("-Command");
-            psi.ArgumentList.Add(endpoint.InlineCommand ?? "");
+            // Pipe stdin into a scriptblock so trailing argv entries bind via @args
+            // and the script can still consume the request body via $input.
+            // Without the wrapper, PowerShell concatenates all trailing args into the
+            // -Command string and fails to parse them.
+            psi.ArgumentList.Add("$input | & { " + (endpoint.InlineCommand ?? "") + " } @args");
         }
     }
 
