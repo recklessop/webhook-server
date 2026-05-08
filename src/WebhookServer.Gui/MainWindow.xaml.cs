@@ -52,4 +52,10 @@ public partial class MainWindow : Window
         if (DataContext is MainViewModel vm && vm.EditEndpointCommand.CanExecute(null))
             vm.EditEndpointCommand.Execute(null);
     }
+
+    private async void OnBackupsSubmenuOpened(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is MainViewModel vm)
+            await vm.RefreshBackupsCommand.ExecuteAsync(null);
+    }
 }

@@ -175,6 +175,92 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
+    [ObservableProperty] private System.Collections.ObjectModel.ObservableCollection<BackupEntry> _backups = new();
+
+    [RelayCommand]
+    private async Task RefreshBackupsAsync()
+    {
+        try
+        {
+            var list = await _client.ListBackupsAsync().ConfigureAwait(false);
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                Backups.Clear();
+                foreach (var b in list) Backups.Add(b);
+            });
+        }
+        catch { /* ignore - backup listing isn't critical */ }
+    }
+
+    [RelayCommand]
+    private async Task RestoreBackupAsync(BackupEntry? entry)
+    {
+        if (entry is null) return;
+        var ok = MessageBox.Show(
+            $"Restore configuration from {entry.FileName} ({entry.SavedAt:yyyy-MM-dd HH:mm})?\n\nA backup of the current config will be saved first.",
+            "Restore backup",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Question);
+        if (ok != MessageBoxResult.OK) return;
+        try
+        {
+            await _client.RestoreBackupAsync(entry.FileName).ConfigureAwait(false);
+            await RefreshAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex) { ShowError("Restore failed", ex); }
+    }
+
+    [RelayCommand]
+    private async Task ExportConfigAsync()
+    {
+        try
+        {
+            var snap = await _client.GetConfigAsync().ConfigureAwait(false);
+            if (snap is null) { ShowError("Export failed", new InvalidOperationException("Service did not return a config.")); return; }
+
+            var dlg = new Microsoft.Win32.SaveFileDialog
+            {
+                FileName = $"webhook-server-config-{DateTime.Now:yyyyMMdd-HHmmss}.json",
+                DefaultExt = ".json",
+                Filter = "JSON config (*.json)|*.json",
+            };
+            if (dlg.ShowDialog() != true) return;
+
+            var json = System.Text.Json.JsonSerializer.Serialize(snap, WebhookServer.Core.Storage.ConfigJson.Pretty);
+            await System.IO.File.WriteAllTextAsync(dlg.FileName, json).ConfigureAwait(false);
+        }
+        catch (Exception ex) { ShowError("Export failed", ex); }
+    }
+
+    [RelayCommand]
+    private async Task ImportConfigAsync()
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Filter = "JSON config (*.json)|*.json",
+            CheckFileExists = true,
+        };
+        if (dlg.ShowDialog() != true) return;
+
+        try
+        {
+            var json = await System.IO.File.ReadAllTextAsync(dlg.FileName).ConfigureAwait(false);
+            var cfg = System.Text.Json.JsonSerializer.Deserialize<ServerConfig>(json, WebhookServer.Core.Storage.ConfigJson.Pretty);
+            if (cfg is null) throw new InvalidOperationException("File did not contain a valid config.");
+
+            var ok = MessageBox.Show(
+                $"Replace the current configuration with {dlg.FileName}?\n\nA backup of the current config will be saved first.",
+                "Import config",
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Warning);
+            if (ok != MessageBoxResult.OK) return;
+
+            await _client.ImportConfigAsync(cfg).ConfigureAwait(false);
+            await RefreshAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex) { ShowError("Import failed", ex); }
+    }
+
     [RelayCommand]
     private async Task RestartServiceAsync()
     {

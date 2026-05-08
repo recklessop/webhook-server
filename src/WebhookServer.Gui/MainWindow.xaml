@@ -27,9 +27,26 @@
             <MenuItem Header="_File">
                 <MenuItem Header="_New endpoint…" Command="{Binding AddEndpointCommand}" InputGestureText="Ctrl+N"/>
                 <Separator/>
-                <MenuItem Header="_Import config…" IsEnabled="False" ToolTip="Coming soon"/>
-                <MenuItem Header="_Export config…" IsEnabled="False" ToolTip="Coming soon"/>
-                <MenuItem Header="_Backups" IsEnabled="False" ToolTip="Coming soon"/>
+                <MenuItem Header="_Import config…" Command="{Binding ImportConfigCommand}"/>
+                <MenuItem Header="_Export config…" Command="{Binding ExportConfigCommand}"/>
+                <MenuItem Header="_Backups"
+                          ItemsSource="{Binding Backups}"
+                          SubmenuOpened="OnBackupsSubmenuOpened">
+                    <MenuItem.ItemContainerStyle>
+                        <Style TargetType="MenuItem">
+                            <Setter Property="Header">
+                                <Setter.Value>
+                                    <MultiBinding StringFormat="{}{0:yyyy-MM-dd HH:mm:ss}  ({1:n0} bytes)">
+                                        <Binding Path="SavedAt"/>
+                                        <Binding Path="SizeBytes"/>
+                                    </MultiBinding>
+                                </Setter.Value>
+                            </Setter>
+                            <Setter Property="Command" Value="{Binding DataContext.RestoreBackupCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                            <Setter Property="CommandParameter" Value="{Binding}"/>
+                        </Style>
+                    </MenuItem.ItemContainerStyle>
+                </MenuItem>
                 <Separator/>
                 <MenuItem Header="E_xit" Command="{Binding ExitCommand}"/>
             </MenuItem>
