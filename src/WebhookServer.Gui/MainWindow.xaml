@@ -29,8 +29,9 @@
                 <Separator/>
                 <MenuItem Header="_Import config…" Command="{Binding ImportConfigCommand}"/>
                 <MenuItem Header="_Export config…" Command="{Binding ExportConfigCommand}"/>
-                <MenuItem Header="_Backups"
+                <MenuItem Header="Config _Checkpoints"
                           ItemsSource="{Binding Backups}"
+                          ToolTip="Snapshots taken automatically before each save. Click one to restore."
                           SubmenuOpened="OnBackupsSubmenuOpened">
                     <MenuItem.ItemContainerStyle>
                         <Style TargetType="MenuItem">

@@ -189,7 +189,7 @@ public sealed partial class MainViewModel : ObservableObject
                 foreach (var b in list) Backups.Add(b);
             });
         }
-        catch { /* ignore - backup listing isn't critical */ }
+        catch { /* ignore - checkpoint listing isn't critical */ }
     }
 
     [RelayCommand]
@@ -197,8 +197,8 @@ public sealed partial class MainViewModel : ObservableObject
     {
         if (entry is null) return;
         var ok = MessageBox.Show(
-            $"Restore configuration from {entry.FileName} ({entry.SavedAt:yyyy-MM-dd HH:mm})?\n\nA backup of the current config will be saved first.",
-            "Restore backup",
+            $"Restore the configuration from the checkpoint taken at {entry.SavedAt:yyyy-MM-dd HH:mm}?\n\nThe current configuration is automatically saved as a new checkpoint first, so you can roll forward again.",
+            "Restore checkpoint",
             MessageBoxButton.OKCancel,
             MessageBoxImage.Question);
         if (ok != MessageBoxResult.OK) return;
@@ -249,7 +249,7 @@ public sealed partial class MainViewModel : ObservableObject
             if (cfg is null) throw new InvalidOperationException("File did not contain a valid config.");
 
             var ok = MessageBox.Show(
-                $"Replace the current configuration with {dlg.FileName}?\n\nA backup of the current config will be saved first.",
+                $"Replace the current configuration with {dlg.FileName}?\n\nA checkpoint of the current config is saved first, so you can roll back from File → Config Checkpoints.",
                 "Import config",
                 MessageBoxButton.OKCancel,
                 MessageBoxImage.Warning);
