@@ -44,7 +44,12 @@ param(
     [string]$AuthorEmail = 'noreply@jpaul.me'
 )
 
-$ErrorActionPreference = 'Stop'
+# Continue (not Stop) because git writes informational messages to stderr
+# (CRLF warnings, "remote: Processed N references" etc.) which PowerShell 5.1
+# escalates to a script-fatal error under Stop. We check $LASTEXITCODE
+# manually after each git call instead.
+$ErrorActionPreference = 'Continue'
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $docsDir  = Join-Path $repoRoot 'docs'
 $workDir  = Join-Path $env:TEMP ("webhook-wiki-{0}" -f ([guid]::NewGuid().ToString('N').Substring(0, 8)))
@@ -98,10 +103,14 @@ function New-Sidebar() {
 
 # 1. Clone the wiki.
 Write-Host "Cloning wiki to $workDir..."
-git clone --quiet $WikiUrl $workDir
+& git clone --quiet $WikiUrl $workDir 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
     throw "git clone failed. Has the wiki been initialized? Visit the repo's Wiki tab and create the first page via the UI before running this script."
 }
+# Suppress git's CRLF nags for this throwaway clone so they don't become
+# "errors" via PowerShell's native-command stderr handling.
+& git -C $workDir config core.autocrlf false 2>&1 | Out-Null
+& git -C $workDir config core.safecrlf false 2>&1 | Out-Null
 
 try {
     Push-Location $workDir
@@ -128,16 +137,19 @@ try {
         # 4. Sidebar
         Set-Content -LiteralPath (Join-Path $workDir '_Sidebar.md') -Value (New-Sidebar) -Encoding utf8 -NoNewline
 
-        # 5. Commit + push if anything actually changed.
-        git add -A
-        $changes = git status --porcelain
+        # 5. Commit + push if anything actually changed. Drain stderr from each
+        # git invocation so PowerShell doesn't treat warnings as errors.
+        & git add -A 2>&1 | Out-Null
+        $changes = & git status --porcelain 2>&1
         if (-not $changes) {
             Write-Host "Wiki already up to date."
             return
         }
-        $sha = git -C $repoRoot rev-parse --short HEAD
-        git -c "user.name=$AuthorName" -c "user.email=$AuthorEmail" commit -q -m "Sync from docs/ at $sha"
-        git push --quiet
+        $sha = & git -C $repoRoot rev-parse --short HEAD 2>&1
+        & git -c "user.name=$AuthorName" -c "user.email=$AuthorEmail" commit -q -m "Sync from docs/ at $sha" 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "git commit failed (exit $LASTEXITCODE)" }
+        & git push --quiet 2>&1 | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "git push failed (exit $LASTEXITCODE)" }
         Write-Host "Pushed updated wiki."
     }
     finally { Pop-Location }
