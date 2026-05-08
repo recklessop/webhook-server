@@ -176,6 +176,41 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private async Task RestartServiceAsync()
+    {
+        var ok = MessageBox.Show(
+            "Restart the WebhookServer service? In-flight requests will be aborted.",
+            "Restart service",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Warning);
+        if (ok != MessageBoxResult.OK) return;
+
+        try
+        {
+            await _client.RestartListenerAsync().ConfigureAwait(false);
+            await Task.Delay(2000).ConfigureAwait(false);
+            await RefreshAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            ShowError("Restart failed", ex);
+        }
+    }
+
+    [RelayCommand]
+    private void ShowAbout()
+    {
+        var dlg = new Views.AboutDialog { Owner = Application.Current.MainWindow };
+        dlg.ShowDialog();
+    }
+
+    [RelayCommand]
+    private void Exit()
+    {
+        Application.Current.Shutdown();
+    }
+
+    [RelayCommand]
     private void CopyEndpointUrl()
     {
         if (SelectedEndpoint is null || string.IsNullOrEmpty(HttpBaseUrl)) return;

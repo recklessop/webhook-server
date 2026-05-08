@@ -1,0 +1,14 @@
+<Project>
+
+  <PropertyGroup>
+    <Version>0.1.0</Version>
+    <Authors>Justin Paul</Authors>
+    <Company>Justin Paul</Company>
+    <Product>Webhook Server</Product>
+    <Copyright>Copyright (c) Justin Paul</Copyright>
+    <PackageProjectUrl>https://jpaul.me</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/recklessop/webhook-server</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+</Project>
