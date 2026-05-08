@@ -57,7 +57,7 @@ internal static class InteractiveProcessLauncher
         if (!WTSQueryUserToken(sessionId, out var userToken))
             throw LastError("WTSQueryUserToken (must run as SYSTEM)");
 
-        try { return LaunchWithToken(userToken, opts); }
+        try { return LaunchWithToken(userToken, opts, useInteractiveDesktop: true); }
         finally { CloseHandle(userToken); }
     }
 
@@ -80,7 +80,7 @@ internal static class InteractiveProcessLauncher
             }
         }
 
-        try { return LaunchWithToken(token, opts); }
+        try { return LaunchWithToken(token, opts, useInteractiveDesktop: false); }
         finally { CloseHandle(token); }
     }
 
@@ -93,7 +93,7 @@ internal static class InteractiveProcessLauncher
         return domain;
     }
 
-    private static LaunchResult LaunchWithToken(IntPtr sourceToken, LaunchOptions opts)
+    private static LaunchResult LaunchWithToken(IntPtr sourceToken, LaunchOptions opts, bool useInteractiveDesktop)
     {
         IntPtr primaryToken = IntPtr.Zero;
         IntPtr envBlock = IntPtr.Zero;
@@ -127,7 +127,10 @@ internal static class InteractiveProcessLauncher
                 hStdInput = stdinRead,
                 hStdOutput = stdoutWrite,
                 hStdError = stderrWrite,
-                lpDesktop = @"winsta0\default",
+                // For InteractiveUser we explicitly target the logged-in user's desktop.
+                // For SpecificUser the LogonUser-derived token typically can't open that
+                // DACL; leave lpDesktop null and let the new process inherit ours.
+                lpDesktop = useInteractiveDesktop ? @"winsta0\default" : null,
             };
 
             var commandLine = BuildCommandLine(opts.FileName, opts.Arguments);
