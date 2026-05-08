@@ -1,111 +1,90 @@
-# webhook-server
+# Webhook Server
 
-A Windows-native webhook server that runs PowerShell, PowerShell Core, cmd / `.bat`, or arbitrary executables in response to incoming HTTP requests. Endpoints are configured in a desktop GUI; the actual server runs as a Windows Service so it survives reboots and works without anyone logged in.
+A Windows-native webhook server that runs PowerShell, cmd / `.bat`, or any executable in response to incoming HTTP requests. Endpoints are configured in a desktop GUI; the actual server runs as a Windows Service so it survives reboots and works without anyone logged in.
 
-**Status:** planning complete, implementation pending. See [PLAN.md](PLAN.md) for the full design.
+Designed for sysadmins who want to wire up tools like **Zerto pre/post scripts**, GitHub webhooks, monitoring alerts, or backup jobs to Windows-side automation — without writing a custom listener every time.
+
+## Quickstart
+
+1. **Download** the latest installer: <https://github.com/recklessop/webhook-server/releases/latest>
+2. **Run it.** UAC accept → next, next, finish. Adds a Start Menu entry, registers and starts the Windows Service.
+3. **Open Webhook Server** from the Start Menu (auto-elevates).
+4. **File → New endpoint**, configure a slug + script, save, hit the URL.
+
+Full first-time walkthrough: [docs/installation.md](docs/installation.md)
 
 ## Highlights
 
 - **Many endpoints, one service.** Each webhook is a configured URL slug mapped to a script or command.
-- **Per-endpoint auth.** Pick HMAC signature (GitHub/Stripe-style), bearer token, or none.
-- **Per-endpoint IP allowlist.** Restrict by IP or CIDR (IPv4 + IPv6). Empty list = open. Checked before auth.
+- **Per-endpoint auth** — HMAC signature (GitHub / Stripe / Slack style), bearer token, or none.
+- **Per-endpoint IP allowlist.** Restrict by IP or CIDR. Empty list = open. Checked before auth so blocked IPs get a fast 403.
+- **Per-endpoint Run As** — run the hook as the service account (default), the user logged in at the keyboard (for UI hooks), or a named domain/local user via password.
 - **Flexible execution.** Windows PowerShell 5.1, PowerShell 7+, cmd / `.bat`, or any `.exe`.
-- **Flexible input.** Any combination of: JSON body to stdin, query/headers as env vars, `{{template}}` arg expansion.
-- **Sync or async per endpoint.** Sync returns exit code + stdout/stderr; async returns 202 immediately.
-- **Outbound callbacks.** Optional per-endpoint callback URL — service POSTs the run result back after the script finishes. Required for async callers who want to know what happened. HMAC-signed, retried with backoff. Pre-configured only (no SSRF surface from caller-supplied URLs).
-- **Service-first.** Always-on Windows Service. The WPF GUI is a thin config/monitor client over a named pipe.
-- **HTTPS optional.** Bind a `.pfx` or cert-store thumbprint from the GUI; HTTP works out of the box.
-- **Secrets at rest.** Tokens and HMAC secrets are encrypted via DPAPI (LocalMachine scope) in `config.json`.
+- **Flexible input** — any combination of: JSON body to stdin, query / headers as env vars, `{{body.foo.bar}}` template expansion into argv.
+- **Sync or async per endpoint.** Sync returns exit code + stdout / stderr to the caller; async returns 202 immediately.
+- **Outbound callbacks.** Optional per-endpoint URL the service POSTs run results to after the script finishes. HMAC-signed, retry-with-backoff. Required for async callers who want to know what happened.
+- **Configurable network** — bind to specific NICs, set the URL host shown in the GUI, configure trusted reverse proxies.
+- **HTTPS optional.** Bind a `.pfx` or cert-store thumbprint from the GUI.
+- **Secrets at rest** — bearer tokens, HMAC keys, RunAs passwords, and PFX passwords are DPAPI-encrypted (LocalMachine scope) in `config.json`.
+- **Auto-snapshots.** Every config save writes a Config Checkpoint; restore to any point with one click. Last 30 retained.
 
 ## Architecture
 
 ```
-+------------------+  named pipe   +------------------------------+
-|   WPF GUI app    | <----------> |  Windows Service              |
-|  (config/monitor)|               |  - Kestrel: webhook listener |
-+------------------+               |  - Named-pipe admin server   |
-                                   |  - Executor pool             |
-                                   |  - Serilog file logging      |
-                                   +------------------------------+
-                                            ^
-                            C:\ProgramData\WebhookServer\
-                            - config.json   (DPAPI-encrypted secrets)
-                            - logs\*.log
++------------------+   named pipe    +-------------------------------+
+|   GUI (WPF)      | <-------------> |  Windows Service              |
+|  add / edit /    |  SYSTEM+admin   |  - Kestrel: hook listener     |
+|  view logs       |  ACL'd          |  - Admin pipe server          |
++------------------+                 |  - Executor (process runner)  |
+                                     |  - Callback dispatcher        |
+                                     |  - Serilog file logging       |
+                                     +-------------------------------+
+                                                 |
+                                     C:\ProgramData\WebhookServer\
+                                       - config.json   (DPAPI-encrypted)
+                                       - backups\      (auto-snapshots)
+                                       - logs\         (daily rolling)
 ```
 
-## Project layout (planned)
+## Documentation
 
-```
-WebhookServer.sln
-src/
-  WebhookServer.Core/      class lib: models, auth, execution, storage, IPC
-  WebhookServer.Service/   .NET 8 Worker Service (hosts Kestrel + admin pipe)
-  WebhookServer.Gui/       WPF (.NET 8) MVVM config/monitor client
-scripts/
-  install-service.ps1
-  uninstall-service.ps1
-```
+Everything you need to operate the server:
+
+- [Concepts](docs/concepts.md) — what a webhook is and how this server uses one
+- [Installation](docs/installation.md) — interactive and silent install
+- [Upgrading](docs/upgrading.md) — single click; what's preserved
+- [Uninstalling](docs/uninstalling.md) — clean removal
+- [Run As modes](docs/runas-modes.md) — Service / InteractiveUser / SpecificUser
+- [Service account & Active Directory](docs/service-account-and-ad.md) — gMSA + delegated rights
+- [Network & security](docs/network-and-security.md) — bind addresses, allowlists, HTTPS, secrets
+- [Troubleshooting](docs/troubleshooting.md) — common errors and where to look
+
+Recipes:
+
+- [Zerto pre/post scripts → AD / DNS update](docs/recipes/zerto-pre-post-scripts.md) ← **canonical use case**
+- [GitHub-style HMAC-signed webhook](docs/recipes/github-style-hmac.md)
+- [AD password reset endpoint](docs/recipes/ad-password-reset.md)
+- [Pop UI on the user's desktop](docs/recipes/ui-on-desktop.md)
 
 ## Requirements
 
-- Windows 10 / 11 or Windows Server 2019+
-- .NET 8 SDK to build, .NET 8 Runtime (or self-contained publish) to run
-- Administrator rights to install the service and to run the GUI (the admin named pipe is ACL'd to SYSTEM + Administrators)
+- Windows 10 / 11 / Server 2019+
+- x64
+- .NET 8 SDK to build (the released installer includes everything else)
 
-## Building (on Windows)
-
-```powershell
-dotnet restore
-dotnet build -c Release
-dotnet publish src/WebhookServer.Service -c Release -r win-x64 --self-contained
-dotnet publish src/WebhookServer.Gui     -c Release -r win-x64 --self-contained
-```
-
-## Installing the service (on Windows)
+## Building from source
 
 ```powershell
-# from an elevated PowerShell prompt
-sc.exe create WebhookServer binPath= "C:\Program Files\WebhookServer\WebhookServer.Service.exe" start= auto
-sc.exe start  WebhookServer
+git clone https://github.com/recklessop/webhook-server.git
+cd webhook-server
+
+# Dev install (publishes + copies to C:\Program Files\WebhookServer + registers service)
+powershell -ExecutionPolicy Bypass -File scripts\deploy.ps1
+
+# Or build the installer locally (requires Inno Setup 6: winget install JRSoftware.InnoSetup)
+powershell -ExecutionPolicy Bypass -File scripts\build-installer.ps1
 ```
-
-`scripts/install-service.ps1` will wrap this once implemented and will accept a `-ServiceAccount` parameter.
-
-## Service account & Active Directory
-
-The service runs as `LocalSystem` by default — fine for local-only scripts and read-only AD queries (it authenticates to the domain as the computer account). If your webhook scripts need to **modify** AD (password resets, group changes, etc.), run the service under an account with the right delegated rights:
-
-- **Recommended: gMSA** — Active Directory generates and rotates the password automatically.
-  ```powershell
-  # on a DC, once
-  New-ADServiceAccount -Name svc-webhookserver -DNSHostName host.domain.local `
-      -PrincipalsAllowedToRetrieveManagedPassword "DOMAIN\WebhookHosts"
-  # on the webhook host
-  Install-ADServiceAccount svc-webhookserver
-  sc.exe create WebhookServer binPath= "..." obj= "DOMAIN\svc-webhookserver$" start= auto
-  ```
-  Note the trailing `$` and the absence of `password=`.
-
-- **Plain domain user** — works on older domains, but you own password rotation:
-  ```powershell
-  sc.exe create WebhookServer binPath= "..." obj= "DOMAIN\svc-webhookserver" password= "..." start= auto
-  ```
-
-Don't use `LocalService` — it has no network identity and cannot talk to a domain controller.
-
-> Heads up: any account the service runs under is the account your hook scripts run under. `LocalSystem` is the most powerful local account on the machine — treat webhook script contents as privileged.
-
-## Configuration
-
-The service reads `C:\ProgramData\WebhookServer\config.json`. Edit it through the GUI rather than by hand — the GUI handles DPAPI encryption of secrets and validation of IP allowlist entries.
-
-## Out of scope for v1
-
-- Importing/exporting config across machines (DPAPI LocalMachine scope ties decryption to the host).
-- Per-endpoint rate limiting.
-- Multi-user RBAC for the GUI.
-- Auto-update.
 
 ## License
 
-Not yet chosen.
+TBD.

@@ -291,6 +291,23 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void OpenDocumentation()
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "https://github.com/recklessop/webhook-server/tree/main/docs",
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            ShowError("Could not open documentation", ex);
+        }
+    }
+
+    [RelayCommand]
     private void Exit()
     {
         Application.Current.Shutdown();

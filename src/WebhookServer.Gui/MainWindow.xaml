@@ -57,6 +57,8 @@
                 <MenuItem Header="_Restart service" Command="{Binding RestartServiceCommand}"/>
             </MenuItem>
             <MenuItem Header="_Help">
+                <MenuItem Header="_Documentation…" Command="{Binding OpenDocumentationCommand}"/>
+                <Separator/>
                 <MenuItem Header="_About Webhook Server…" Command="{Binding ShowAboutCommand}"/>
             </MenuItem>
         </Menu>
