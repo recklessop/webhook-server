@@ -126,6 +126,7 @@ public sealed class WebhookRouter
         }
 
         var result = await RunAsync(endpoint, ctx, http.RequestAborted).ConfigureAwait(false);
+        LogResult(endpoint, ctx, result);
         DispatchCallback(endpoint, ctx, result);
 
         if (result.LaunchError is not null)
@@ -157,12 +158,54 @@ public sealed class WebhookRouter
         try
         {
             var result = await RunAsync(endpoint, ctx, ct).ConfigureAwait(false);
+            LogResult(endpoint, ctx, result);
             DispatchCallback(endpoint, ctx, result);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Async run failed for {Slug} (run {RunId})", ctx.Slug, ctx.RunId);
         }
+    }
+
+    private void LogResult(EndpointConfig endpoint, ExecCtx ctx, ExecutionResult result)
+    {
+        if (result.LaunchError is not null)
+        {
+            _logger.LogWarning("Run {RunId} {Slug} failed to launch: {Error}",
+                ctx.RunId, ctx.Slug, result.LaunchError);
+            return;
+        }
+        if (result.TimedOut)
+        {
+            _logger.LogWarning("Run {RunId} {Slug} timed out after {Sec}s; process killed",
+                ctx.RunId, ctx.Slug, endpoint.TimeoutSeconds);
+            return;
+        }
+
+        var stdout = TruncateForLog(result.Stdout, 512);
+        var stderr = TruncateForLog(result.Stderr, 512);
+        if (result.Succeeded)
+        {
+            _logger.LogInformation(
+                "Run {RunId} {Slug} ok exit={Exit} dur={Ms}ms stdout={Stdout}{StderrPart}",
+                ctx.RunId, ctx.Slug, result.ExitCode, (long)result.Duration.TotalMilliseconds,
+                stdout, string.IsNullOrEmpty(stderr) ? "" : $" stderr={stderr}");
+        }
+        else
+        {
+            _logger.LogWarning(
+                "Run {RunId} {Slug} non-zero exit={Exit} dur={Ms}ms stdout={Stdout} stderr={Stderr}",
+                ctx.RunId, ctx.Slug, result.ExitCode, (long)result.Duration.TotalMilliseconds,
+                stdout, stderr);
+        }
+    }
+
+    private static string TruncateForLog(string s, int max)
+    {
+        if (string.IsNullOrEmpty(s)) return "(empty)";
+        var trimmed = s.Trim();
+        if (trimmed.Length <= max) return trimmed;
+        return trimmed.Substring(0, max) + $"... [+{trimmed.Length - max} chars]";
     }
 
     private async Task<ExecutionResult> RunAsync(EndpointConfig endpoint, ExecCtx ctx, CancellationToken ct)
