@@ -12,6 +12,9 @@ on:
 
 jobs:
   build-installer:
+    # Gitea reads .github/workflows/ for compatibility, but the create-release
+    # step uses a GitHub-only action. Skip the whole job on non-GitHub runners.
+    if: github.server_url == 'https://github.com'
     runs-on: windows-latest
     permissions:
       contents: write   # needed to create releases / upload assets
