@@ -56,7 +56,7 @@ public sealed class ConfigStore
                         System.IO.Path.ChangeExtension(backupPath, ".meta.json"),
                         JsonSerializer.Serialize(sidecar, ConfigJson.Compact));
                 }
-                PruneBackups(backupsDir, retain: 30);
+                PruneBackups(backupsDir, retain: 90);
             }
             catch
             {
