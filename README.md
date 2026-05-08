@@ -7,7 +7,7 @@ Designed for sysadmins who want to wire up tools like **Zerto pre/post scripts**
 ## Quickstart
 
 1. **Download** the latest installer: <https://github.com/recklessop/webhook-server/releases/latest>
-2. **Run it.** UAC accept → next, next, finish. Adds a Start Menu entry, registers and starts the Windows Service.
+2. **Run it.** UAC accept → next, next, finish. Adds a Start Menu entry, registers and starts the Windows Service. The installer also downloads + installs the **.NET 8 runtimes** (ASP.NET Core + Desktop) if they're missing — fresh Windows Server installs need this.
 3. **Open Webhook Server** from the Start Menu (auto-elevates).
 4. **File → New endpoint**, configure a slug + script, save, hit the URL.
 
