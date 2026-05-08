@@ -79,16 +79,39 @@ Filename: "powershell.exe"; \
     RunOnceId: "RemoveWebhookService"
 
 [Code]
+function ServiceExists(): Boolean;
+var
+  ResultCode: Integer;
+begin
+  // sc.exe query returns 0 when the service exists, 1060 when it does not.
+  Exec(ExpandConstant('{sys}\sc.exe'), 'query WebhookServer', '', SW_HIDE,
+       ewWaitUntilTerminated, ResultCode);
+  Result := (ResultCode = 0);
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   ResultCode: Integer;
 begin
   Result := '';
-  // Stop the running service so its binaries are unlocked before file copy.
-  // Ignore failure - sc returns non-zero if the service doesn't exist (fresh
-  // install) or is already stopped, both of which are fine.
-  Exec(ExpandConstant('{sys}\sc.exe'), 'stop WebhookServer', '', SW_HIDE,
-       ewWaitUntilTerminated, ResultCode);
-  // Give the SCM a moment to actually release the executable.
-  Sleep(2000);
+
+  // 1. If the service exists, stop it so its binaries are unlocked before file
+  //    copy. net stop is synchronous (blocks until the service is actually
+  //    stopped), unlike sc stop which is fire-and-forget. Non-zero exit -
+  //    already stopped, missing, dependency error - we ignore; the file copy
+  //    will fail loudly if the binaries are still locked.
+  if ServiceExists() then
+  begin
+    WizardForm.PreparingLabel.Caption := 'Stopping the WebhookServer service...';
+    Exec(ExpandConstant('{sys}\net.exe'), 'stop WebhookServer', '', SW_HIDE,
+         ewWaitUntilTerminated, ResultCode);
+  end;
+
+  // 2. Kill any running GUI / tray instances so their binaries are unlocked too.
+  //    /f forces termination, /im matches by image name, "*" wildcard would be
+  //    risky so we name them explicitly.
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/f /im WebhookServer.Gui.exe',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/f /im WebhookServer.Service.exe',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
