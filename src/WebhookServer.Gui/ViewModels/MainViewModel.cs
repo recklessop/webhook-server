@@ -29,15 +29,26 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty] private ServerConfig _serverConfig = new();
     [ObservableProperty] private string _httpBaseUrl = "http://localhost:8080";
     [ObservableProperty] private string? _httpsBaseUrl;
+    [ObservableProperty] private bool _minimizeToTrayEnabled;
 
     private readonly DispatcherTimer _logTimer;
+    private readonly GuiSettings _settings;
 
     public MainViewModel(AdminPipeClient client)
     {
         _client = client;
+        _settings = GuiSettings.Load();
+        _minimizeToTrayEnabled = _settings.MinimizeToTrayEnabled;
+
         _logTimer = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(3) };
         _logTimer.Tick += async (_, _) => await RefreshLogTailAsync();
         _logTimer.Start();
+    }
+
+    partial void OnMinimizeToTrayEnabledChanged(bool value)
+    {
+        _settings.MinimizeToTrayEnabled = value;
+        _settings.Save();
     }
 
     [RelayCommand]

@@ -38,7 +38,7 @@ public partial class MainWindow : Window
 
     private void OnClosing(object? sender, CancelEventArgs e)
     {
-        if (ExitForReal)
+        if (ExitForReal || !_vm.MinimizeToTrayEnabled)
         {
             _tray.Dispose();
             return;
@@ -58,9 +58,10 @@ public partial class MainWindow : Window
 
     private void OnStateChanged(object? sender, EventArgs e)
     {
-        // Minimize-to-tray: hide the window when the user minimizes; restoring is
-        // via the tray icon's double-click or context menu.
-        if (WindowState == WindowState.Minimized)
+        // Minimize-to-tray: hide the window when the user minimizes IF they've
+        // opted in via File -> Minimize to tray. Otherwise behave like a normal
+        // Windows minimize.
+        if (WindowState == WindowState.Minimized && _vm.MinimizeToTrayEnabled)
         {
             Hide();
             ShowInTaskbar = false;

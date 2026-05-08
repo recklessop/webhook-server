@@ -31,6 +31,11 @@
                 <MenuItem Header="_Export config…" Command="{Binding ExportConfigCommand}"/>
                 <MenuItem Header="Config _Checkpoints…" Command="{Binding ShowConfigCheckpointsCommand}"/>
                 <Separator/>
+                <MenuItem Header="_Minimize to tray"
+                          IsCheckable="True"
+                          IsChecked="{Binding MinimizeToTrayEnabled, Mode=TwoWay}"
+                          ToolTip="When ticked, closing or minimizing the window hides it to the tray and keeps the GUI process alive. Untick to make the X button quit the app."/>
+                <Separator/>
                 <MenuItem Header="E_xit" Command="{Binding ExitCommand}"/>
             </MenuItem>
             <MenuItem Header="_Server">
