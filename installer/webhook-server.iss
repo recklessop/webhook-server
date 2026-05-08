@@ -77,3 +77,18 @@ Filename: "powershell.exe"; \
     Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\scripts\uninstall-service.ps1"""; \
     Flags: runhidden; \
     RunOnceId: "RemoveWebhookService"
+
+[Code]
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+var
+  ResultCode: Integer;
+begin
+  Result := '';
+  // Stop the running service so its binaries are unlocked before file copy.
+  // Ignore failure - sc returns non-zero if the service doesn't exist (fresh
+  // install) or is already stopped, both of which are fine.
+  Exec(ExpandConstant('{sys}\sc.exe'), 'stop WebhookServer', '', SW_HIDE,
+       ewWaitUntilTerminated, ResultCode);
+  // Give the SCM a moment to actually release the executable.
+  Sleep(2000);
+end;

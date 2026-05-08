@@ -16,6 +16,7 @@
     <UseWPF>true</UseWPF>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon>..\..\resources\webhook-server.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyTitle>Webhook Server</AssemblyTitle>
   </PropertyGroup>
 
