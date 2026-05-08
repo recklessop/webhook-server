@@ -11,6 +11,10 @@ on:
 
 jobs:
   sync:
+    # Gitea reads .github/workflows/ for compatibility, but this workflow
+    # pushes to a GitHub-hosted wiki. Skip on non-GitHub runners; the Gitea
+    # wiki is synced separately via scripts/sync-wiki.ps1.
+    if: github.server_url == 'https://github.com'
     runs-on: windows-latest
     permissions:
       contents: write
