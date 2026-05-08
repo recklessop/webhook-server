@@ -38,6 +38,28 @@ You launched the GUI without elevation. The admin pipe ACL is `SYSTEM` + `Admini
 
 **Fix in v0.1.0**: right-click the Start Menu shortcut → **Run as administrator**, or upgrade.
 
+### Service won't start after install / GUI says "Disconnected" with no obvious error
+
+If `Get-Service WebhookServer` shows it stopped and `Start-Service WebhookServer` fails, or the GUI itself won't even launch, you're probably missing a .NET 8 runtime. The v0.1.4+ installer auto-fetches them, but a clean Windows Server box might still hit this if the install was offline or used an older installer.
+
+Check what's installed:
+
+```powershell
+dotnet --list-runtimes
+```
+
+You need both:
+
+- `Microsoft.AspNetCore.App 8.x.y` — for the Service
+- `Microsoft.WindowsDesktop.App 8.x.y` — for the GUI
+
+If either is missing, install from:
+
+- ASP.NET Core 8 Runtime — <https://aka.ms/dotnet/8.0/aspnetcore-runtime-win-x64.exe>
+- .NET Desktop Runtime 8 — <https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe>
+
+Re-run with `/install /quiet /norestart` for unattended installs. Then `Start-Service WebhookServer`.
+
 ### "Connection refused" hitting the hook URL
 
 Three possibilities, in order of probability:

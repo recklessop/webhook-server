@@ -7,7 +7,7 @@ Designed for sysadmins who want to wire up tools like **Zerto pre/post scripts**
 ## Quickstart
 
 1. **Download** the latest installer: <https://github.com/recklessop/webhook-server/releases/latest>
-2. **Run it.** UAC accept → next, next, finish. Adds a Start Menu entry, registers and starts the Windows Service.
+2. **Run it.** UAC accept → next, next, finish. Adds a Start Menu entry, registers and starts the Windows Service. The installer also downloads + installs the **.NET 8 runtimes** (ASP.NET Core + Desktop) if they're missing — fresh Windows Server installs need this.
 3. **Open Webhook Server** from the Start Menu (auto-elevates).
 4. **File → New endpoint**, configure a slug + script, save, hit the URL.
 
@@ -61,11 +61,12 @@ Everything you need to operate the server:
 
 Recipes:
 
-- [Zerto failover post-script → DNS + service checks](docs/recipes/zerto-pre-post-scripts.md) ← **canonical use case**
+- [Zerto failover post-script → DNS + service checks](docs/recipes/zerto-pre-post-scripts.md) ← **canonical use case** (Windows ZVM)
+- [Zerto ZVMA (Kubernetes) pre/post → notify + VM health check](docs/recipes/zerto-zvma-pre-post.md) — same pattern for the in-cluster scripts-service
 - [GitHub-style HMAC-signed webhook](docs/recipes/github-style-hmac.md)
 - [Pop UI on the user's desktop](docs/recipes/ui-on-desktop.md)
 
-A ready-to-drop-in Zerto-side script is included at [`scripts/examples/zerto-post-failover.ps1`](scripts/examples/zerto-post-failover.ps1).
+Ready-to-drop-in Zerto-side scripts are included at [`scripts/examples/zerto-post-failover.ps1`](scripts/examples/zerto-post-failover.ps1) (Windows ZVM) and [`scripts/examples/zerto-zvma-send.ps1`](scripts/examples/zerto-zvma-send.ps1) (ZVMA / Kubernetes); receiver examples for the ZVMA recipe ship as [`zerto-receiver-notify.ps1`](scripts/examples/zerto-receiver-notify.ps1) and [`zerto-receiver-vm-healthcheck.ps1`](scripts/examples/zerto-receiver-vm-healthcheck.ps1).
 
 ## Requirements
 

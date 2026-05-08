@@ -96,12 +96,104 @@ Write-Host "Compiling installer with $iscc"
 # source files. cd-ing first sidesteps it.
 $issDir  = Split-Path $iss -Parent
 $issName = Split-Path $iss -Leaf
+
+# Extra pre-flight: confirm the specific files our .iss references that a
+# trivial test .iss wouldn't (icon, README, scripts) actually exist relative
+# to the .iss directory the way ISCC will resolve them (RepoRoot = ..\).
+Write-Host "--- pre-flight: paths the .iss references via {#RepoRoot} ---" -ForegroundColor Cyan
+$issRefs = @(
+    'resources\webhook-server.ico',
+    'README.md',
+    'scripts\install-service.ps1',
+    'scripts\uninstall-service.ps1',
+    'publish\service',
+    'publish\gui',
+    'docs',
+    'scripts\examples'
+)
+foreach ($ref in $issRefs) {
+    $abs = Join-Path $repoRoot $ref
+    $exists = Test-Path $abs
+    Write-Host ("  {0,-40} exists={1}  ({2})" -f $ref, $exists, $abs)
+}
+Write-Host ""
+
+Write-Host "--- runtime context ---" -ForegroundColor Cyan
+Write-Host "  identity:      $([Security.Principal.WindowsIdentity]::GetCurrent().Name)"
+Write-Host "  USERPROFILE:   $env:USERPROFILE"
+Write-Host "  APPDATA:       $env:APPDATA"
+Write-Host "  LOCALAPPDATA:  $env:LOCALAPPDATA"
+Write-Host "  TEMP:          $env:TEMP"
+$isccDir = Split-Path $iscc -Parent
+Write-Host "  ISCC dir:      $isccDir"
+foreach ($f in @('ISCC.exe','ISCmplr.dll','ISPP.dll','Default.isl','Compil32.exe')) {
+    $p = Join-Path $isccDir $f
+    Write-Host ("    {0,-15} exists={1}" -f $f, (Test-Path $p))
+}
+Write-Host ""
+
+Write-Host "  PS  location (pre):  $((Get-Location).Path)"
+Write-Host "  .NET cwd     (pre):  $([System.IO.Directory]::GetCurrentDirectory())"
+
 Push-Location $issDir
+$savedDotNetCwd = [System.IO.Directory]::GetCurrentDirectory()
+[System.IO.Directory]::SetCurrentDirectory($issDir)
 try {
-    Write-Host "  cwd=$issDir"
-    & $iscc "/DAppVersion=$version" $issName
+    Write-Host "  PS  location (post): $((Get-Location).Path)"
+    Write-Host "  .NET cwd     (post): $([System.IO.Directory]::GetCurrentDirectory())"
+
+    # Sanity: compile a minimal .iss right next to ours BEFORE attempting the
+    # real one. Minimal has no #defines, no [Code], no [Files], no compression
+    # tweak - just the absolute floor of what ISCC will accept. If THIS fails
+    # under the same SYSTEM context with the same identical exit/error, the
+    # problem is environmental, not in our .iss content.
+    $minIss = Join-Path $issDir "min-test.iss"
+    @"
+[Setup]
+AppName=MinTest
+AppVersion=1.0
+AppId={{12345678-1234-1234-1234-123456789ABC}
+DefaultDirName={pf}\MinTest
+CreateAppDir=no
+Uninstallable=no
+OutputBaseFilename=mintest
+OutputDir=$dist
+"@ | Set-Content -Path $minIss -Encoding ascii
+    Write-Host ""
+    Write-Host "--- bisect step 1: minimal .iss ---" -ForegroundColor Cyan
+    & $iscc (Split-Path $minIss -Leaf) *>&1 | ForEach-Object { Write-Host "  $_" }
+    $minExit = $LASTEXITCODE
+    Write-Host "  minimal exit: $minExit"
+    Remove-Item $minIss -ErrorAction SilentlyContinue
+    Write-Host ""
+
+    # Bake the version into a temp .iss and override OutputDir to an absolute
+    # path so nothing in the build depends on cwd resolution.
+    $tempIss = Join-Path $issDir "webhook-server.gen.iss"
+    $issBody = Get-Content $issName -Raw
+    $pattern = '(?s)#ifndef AppVersion\s+#define AppVersion "[^"]*"\s+#endif'
+    if ($issBody -notmatch $pattern) { throw "Could not find #ifndef AppVersion block in $issName" }
+    $issBody = $issBody -replace $pattern, "#define AppVersion `"$version`""
+    Set-Content -Path $tempIss -Value $issBody -Encoding ascii
+    Write-Host "  using $tempIss"
+
+    # Capture stdout+stderr together so any error line ISCC emits is visible
+    # in the runner log even if the runner's console capture drops one stream.
+    # /O<absolute> overrides OutputDir so ..\dist isn't resolved relative to
+    # whatever cwd ISCC actually inherits.
+    $logPath = Join-Path $env:TEMP "iscc-$version.log"
+    & $iscc "/O$dist" (Split-Path $tempIss -Leaf) *>&1 | Tee-Object -FilePath $logPath | ForEach-Object { Write-Host $_ }
     $exit = $LASTEXITCODE
+    Write-Host "  ISCC exit code: $exit"
+    Write-Host "  ISCC log path:  $logPath"
+    if (Test-Path $logPath) {
+        Write-Host "  --- iscc log file contents ---"
+        Get-Content $logPath | ForEach-Object { Write-Host "    $_" }
+        Write-Host "  --- end iscc log ---"
+    }
+    Remove-Item $tempIss -ErrorAction SilentlyContinue
 } finally {
+    [System.IO.Directory]::SetCurrentDirectory($savedDotNetCwd)
     Pop-Location
 }
 if ($exit -ne 0) { throw "Inno Setup compile failed (exit $exit)" }

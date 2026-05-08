@@ -6,9 +6,33 @@ This page covers a fresh install. If you already have Webhook Server installed, 
 
 - Windows 10, Windows 11, or Windows Server 2019 / 2022 / 2025
 - Administrator rights to install the service and to run the GUI
+- **.NET 8 runtimes** (the installer downloads + installs them automatically if missing — see below)
 - (Optional, only if you publish from source) .NET 8 SDK
 
 The installer is **x64 only**. There is no x86 build.
+
+### .NET 8 runtimes
+
+Webhook Server is published as framework-dependent (so the installer stays small) and needs two .NET 8 runtimes on the target machine:
+
+| Runtime | Used by | Auto-installed by setup |
+|---|---|---|
+| ASP.NET Core 8 Runtime (`Microsoft.AspNetCore.App` 8.x) | the Service / Kestrel | Yes |
+| .NET Desktop Runtime 8 (`Microsoft.WindowsDesktop.App` 8.x) | the WPF GUI | Yes |
+
+A clean Windows Server install has neither. The installer detects what's missing and downloads + installs each one silently before copying our files. If the machine has no internet access, install them manually first:
+
+- ASP.NET Core 8 Runtime — <https://aka.ms/dotnet/8.0/aspnetcore-runtime-win-x64.exe>
+- .NET Desktop Runtime 8 — <https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe>
+
+Run each with `/install /quiet /norestart` for unattended installs, or just double-click. A reboot is rarely required.
+
+To check what's already installed:
+
+```powershell
+dotnet --list-runtimes
+# expect to see Microsoft.AspNetCore.App 8.x.y and Microsoft.WindowsDesktop.App 8.x.y
+```
 
 ## 1. Download
 

@@ -86,6 +86,17 @@ Filename: "powershell.exe"; \
     RunOnceId: "RemoveWebhookService"
 
 [Code]
+const
+  // aka.ms redirects to the latest 8.0.x patch. Inno Setup's downloader
+  // follows redirects via the Windows HTTP stack.
+  AspNetCore8Url  = 'https://aka.ms/dotnet/8.0/aspnetcore-runtime-win-x64.exe';
+  WinDesktop8Url  = 'https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe';
+  AspNetCore8File = 'aspnetcore-runtime-8.0-win-x64.exe';
+  WinDesktop8File = 'windowsdesktop-runtime-8.0-win-x64.exe';
+
+var
+  DownloadPage: TDownloadWizardPage;
+
 function ServiceExists(): Boolean;
 var
   ResultCode: Integer;
@@ -94,6 +105,119 @@ begin
   Exec(ExpandConstant('{sys}\sc.exe'), 'query WebhookServer', '', SW_HIDE,
        ewWaitUntilTerminated, ResultCode);
   Result := (ResultCode = 0);
+end;
+
+// True if a Microsoft.* shared-framework directory under
+// %ProgramFiles%\dotnet\shared contains at least one 8.x.y subfolder.
+function HasDotNet8(const RuntimeName: String): Boolean;
+var
+  rec: TFindRec;
+  base: String;
+begin
+  Result := False;
+  base := ExpandConstant('{commonpf}\dotnet\shared\') + RuntimeName;
+  if not DirExists(base) then Exit;
+  if FindFirst(base + '\8.*', rec) then
+  try
+    repeat
+      if (rec.Name <> '.') and (rec.Name <> '..') and
+         DirExists(base + '\' + rec.Name) then begin
+        Result := True;
+        Exit;
+      end;
+    until not FindNext(rec);
+  finally
+    FindClose(rec);
+  end;
+end;
+
+function NeedsAspNet8(): Boolean;
+begin
+  Result := not HasDotNet8('Microsoft.AspNetCore.App');
+end;
+
+function NeedsWinDesktop8(): Boolean;
+begin
+  Result := not HasDotNet8('Microsoft.WindowsDesktop.App');
+end;
+
+procedure InitializeWizard;
+begin
+  DownloadPage := CreateDownloadPage(
+    'Downloading prerequisites',
+    'Webhook Server needs the .NET 8 runtimes. Setup is fetching them now.',
+    nil);
+end;
+
+// Runs a downloaded runtime installer silently. Treats Microsoft's
+// "success but reboot pending" / "newer already installed" exit codes
+// as successes so we don't fail the whole install over a benign result.
+function RunRuntimeInstaller(const FileName, DisplayName: String): String;
+var
+  resultCode: Integer;
+  fullPath: String;
+begin
+  Result := '';
+  fullPath := ExpandConstant('{tmp}\') + FileName;
+  if not Exec(fullPath, '/install /quiet /norestart', '', SW_HIDE,
+              ewWaitUntilTerminated, resultCode) then begin
+    Result := 'Could not launch the ' + DisplayName + ' installer.';
+    Exit;
+  end;
+  case resultCode of
+    0, 1638, 3010, 1641: ;
+  else
+    Result := DisplayName + ' installer failed (exit code ' +
+              IntToStr(resultCode) + ').';
+  end;
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  errMsg: String;
+begin
+  Result := True;
+  if CurPageID <> wpReady then Exit;
+  if not (NeedsAspNet8 or NeedsWinDesktop8) then Exit;
+
+  DownloadPage.Clear;
+  if NeedsAspNet8 then
+    DownloadPage.Add(AspNetCore8Url, AspNetCore8File, '');
+  if NeedsWinDesktop8 then
+    DownloadPage.Add(WinDesktop8Url, WinDesktop8File, '');
+  DownloadPage.Show;
+  try
+    try
+      DownloadPage.Download;
+    except
+      if MsgBox('Failed to download the .NET 8 runtimes:' + #13#10#13#10 +
+                GetExceptionMessage + #13#10#13#10 +
+                'Continue installing anyway? Webhook Server will not start ' +
+                'until the runtimes are installed manually.',
+                mbError, MB_YESNO) = IDNO then
+        Result := False;
+      Exit;
+    end;
+  finally
+    DownloadPage.Hide;
+  end;
+
+  if NeedsAspNet8 then begin
+    errMsg := RunRuntimeInstaller(AspNetCore8File, 'ASP.NET Core 8 Runtime');
+    if errMsg <> '' then begin
+      MsgBox(errMsg, mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+  end;
+  if NeedsWinDesktop8 then begin
+    errMsg := RunRuntimeInstaller(WinDesktop8File, '.NET Desktop Runtime 8');
+    if errMsg <> '' then begin
+      MsgBox(errMsg, mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+  end;
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
