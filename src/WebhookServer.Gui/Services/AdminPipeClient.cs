@@ -101,6 +101,6 @@ public sealed class AdminPipeClient
     public Task<AdminResponse> ImportConfigAsync(ServerConfig config, CancellationToken ct = default) =>
         InvokeAsync(AdminOps.ImportConfig, config, ct);
 
-    public Task<BackupEntry?> CreateCheckpointAsync(CancellationToken ct = default) =>
-        InvokeAsync<BackupEntry>(AdminOps.CreateCheckpoint, null, ct);
+    public Task<BackupEntry?> CreateCheckpointAsync(string? description, CancellationToken ct = default) =>
+        InvokeAsync<BackupEntry>(AdminOps.CreateCheckpoint, new CreateCheckpointArgs { Description = description }, ct);
 }

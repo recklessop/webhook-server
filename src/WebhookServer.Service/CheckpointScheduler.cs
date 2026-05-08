@@ -34,7 +34,7 @@ internal sealed class CheckpointScheduler : BackgroundService
 
             try
             {
-                var entry = AdminPipeServer.CreateCheckpoint("daily");
+                var entry = AdminPipeServer.CreateCheckpoint("daily", "Nightly auto-checkpoint");
                 _logger.LogInformation("Daily checkpoint created: {File}", entry.FileName);
             }
             catch (FileNotFoundException)

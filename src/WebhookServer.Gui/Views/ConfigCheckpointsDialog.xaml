@@ -39,11 +39,13 @@
                   HeadersVisibility="Column"
                   GridLinesVisibility="Horizontal">
             <DataGrid.Columns>
-                <DataGridTextColumn Header="When (local)" Width="200"
+                <DataGridTextColumn Header="When (local)" Width="170"
                                     Binding="{Binding SavedAt, StringFormat='{}{0:yyyy-MM-dd HH:mm:ss}', ConverterCulture=en-US}"/>
+                <DataGridTextColumn Header="Description" Width="*"
+                                    Binding="{Binding Description}"/>
                 <DataGridTextColumn Header="Size" Width="100"
                                     Binding="{Binding SizeBytes, StringFormat='{}{0:n0} bytes'}"/>
-                <DataGridTextColumn Header="File name" Width="*"
+                <DataGridTextColumn Header="File name" Width="200"
                                     Binding="{Binding FileName}" FontFamily="Consolas"/>
             </DataGrid.Columns>
         </DataGrid>

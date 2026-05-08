@@ -46,9 +46,20 @@ public sealed partial class ConfigCheckpointsViewModel : ObservableObject
     [RelayCommand]
     private async Task TakeCheckpointAsync()
     {
+        // Prompt for an optional description on the UI thread.
+        string? description = null;
+        var prompted = Application.Current.Dispatcher.Invoke(() =>
+        {
+            var dlg = new Views.TakeCheckpointDialog { Owner = Application.Current.MainWindow };
+            if (dlg.ShowDialog() != true) return false;
+            description = string.IsNullOrWhiteSpace(dlg.Description) ? null : dlg.Description;
+            return true;
+        });
+        if (!prompted) return;
+
         try
         {
-            var entry = await _client.CreateCheckpointAsync().ConfigureAwait(false);
+            var entry = await _client.CreateCheckpointAsync(description).ConfigureAwait(false);
             await RefreshAsync().ConfigureAwait(false);
             if (entry is not null)
             {

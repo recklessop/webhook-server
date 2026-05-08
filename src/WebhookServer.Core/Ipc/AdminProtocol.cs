@@ -34,11 +34,17 @@ public sealed class BackupEntry
     public string FileName { get; set; } = "";
     public DateTimeOffset SavedAt { get; set; }
     public long SizeBytes { get; set; }
+    public string? Description { get; set; }
 }
 
 public sealed class RestoreBackupArgs
 {
     public string FileName { get; set; } = "";
+}
+
+public sealed class CreateCheckpointArgs
+{
+    public string? Description { get; set; }
 }
 
 public sealed class AdminRequest
