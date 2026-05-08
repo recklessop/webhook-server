@@ -4,7 +4,7 @@
     pointing at an isolated data root so production %ProgramData% is not touched.
 
 .DESCRIPTION
-    MUST be run from an elevated PowerShell — the admin pipe is ACL'd to SYSTEM
+    MUST be run from an elevated PowerShell - the admin pipe is ACL'd to SYSTEM
     and the Administrators group, and a non-elevated process cannot connect.
 #>
 [CmdletBinding()]

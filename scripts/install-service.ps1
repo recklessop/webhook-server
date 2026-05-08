@@ -14,8 +14,8 @@
 .PARAMETER ServiceAccount
     Account to run the service under. Defaults to LocalSystem.
     For Active-Directory-aware hooks pass a domain user (DOMAIN\user) or a gMSA
-    (DOMAIN\svc-name$ — note the trailing $). Domain users require -Password.
-    Never pass LocalService — it has no network identity and cannot reach a DC.
+    (DOMAIN\svc-name$ - note the trailing $). Domain users require -Password.
+    Never pass LocalService - it has no network identity and cannot reach a DC.
 
 .PARAMETER Password
     Password for a domain-user account. Not required for LocalSystem, NetworkService,
@@ -48,7 +48,7 @@ if (-not (Test-Path -LiteralPath $BinaryPath)) {
     throw "Binary not found: $BinaryPath"
 }
 
-# sc.exe argv format: "key= value" — space AFTER equals, none before.
+# sc.exe argv format: "key= value" - space AFTER equals, none before.
 $obj = $ServiceAccount
 # Get-Service returns $null when the service doesn't exist; sc.exe query is unreliable
 # because it writes a FAILED line to stdout that makes truthy checks pass.
@@ -84,7 +84,7 @@ if ($LASTEXITCODE -ne 0) { Write-Warning "sc.exe failure returned $LASTEXITCODE 
 
 Write-Host "Starting service '$ServiceName'..."
 sc.exe start $ServiceName
-if ($LASTEXITCODE -ne 0) { throw "sc.exe start failed with exit code $LASTEXITCODE — check Event Viewer (Windows Logs > Application) for details" }
+if ($LASTEXITCODE -ne 0) { throw "sc.exe start failed with exit code $LASTEXITCODE - check Event Viewer (Windows Logs > Application) for details" }
 
 Start-Sleep -Seconds 1
 sc.exe query $ServiceName

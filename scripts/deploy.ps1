@@ -4,7 +4,7 @@
     running under LocalSystem.
 
 .DESCRIPTION
-    Idempotent — safe to re-run after code changes. Stops the service first so binaries
+    Idempotent - safe to re-run after code changes. Stops the service first so binaries
     aren't locked, copies the latest published output to InstallRoot, then re-creates or
     re-configures the service and starts it.
 
@@ -15,7 +15,7 @@
 
 .PARAMETER ServiceAccount
     Service identity. Defaults to LocalSystem. For AD-aware hooks pass a domain user
-    or gMSA — see the Service account section in README.md.
+    or gMSA - see the Service account section in README.md.
 
 .PARAMETER SkipBuild
     Skip the dotnet publish step (use the existing publish\ output as-is).
