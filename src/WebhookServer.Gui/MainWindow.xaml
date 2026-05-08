@@ -31,6 +31,11 @@
                 <MenuItem Header="_Export config…" Command="{Binding ExportConfigCommand}"/>
                 <MenuItem Header="Config _Checkpoints…" Command="{Binding ShowConfigCheckpointsCommand}"/>
                 <Separator/>
+                <MenuItem Header="_Minimize to tray"
+                          IsCheckable="True"
+                          IsChecked="{Binding MinimizeToTrayEnabled, Mode=TwoWay}"
+                          ToolTip="When ticked, closing or minimizing the window hides it to the tray and keeps the GUI process alive. Untick to make the X button quit the app."/>
+                <Separator/>
                 <MenuItem Header="E_xit" Command="{Binding ExitCommand}"/>
             </MenuItem>
             <MenuItem Header="_Server">
@@ -63,17 +68,26 @@
                 <DataGrid.RowStyle>
                     <Style TargetType="DataGridRow">
                         <EventSetter Event="MouseDoubleClick" Handler="OnRowDoubleClick"/>
+                        <!-- The ContextMenu lives in its own visual tree (a popup), so
+                             AncestorType=Window doesn't resolve from inside menu items.
+                             Stash MainViewModel on the row's Tag here (still in the
+                             Window's tree), then reach it from the menu via
+                             PlacementTarget.Tag. -->
+                        <Setter Property="Tag" Value="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Window}}"/>
                         <Setter Property="ContextMenu">
                             <Setter.Value>
                                 <ContextMenu>
-                                    <MenuItem Header="_Edit…" Command="{Binding DataContext.EditEndpointCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
-                                    <MenuItem Header="_Copy URL" Command="{Binding DataContext.CopyEndpointUrlCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                    <MenuItem Header="_Edit…"
+                                              Command="{Binding PlacementTarget.Tag.EditEndpointCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                                    <MenuItem Header="_Copy URL"
+                                              Command="{Binding PlacementTarget.Tag.CopyEndpointUrlCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
                                     <Separator/>
                                     <MenuItem Header="Toggle _enabled"
-                                              Command="{Binding DataContext.ToggleEnabledCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                              CommandParameter="{Binding}"/>
+                                              Command="{Binding PlacementTarget.Tag.ToggleEnabledCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                              CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
                                     <Separator/>
-                                    <MenuItem Header="_Delete…" Command="{Binding DataContext.DeleteEndpointCommand, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                    <MenuItem Header="_Delete…"
+                                              Command="{Binding PlacementTarget.Tag.DeleteEndpointCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
                                 </ContextMenu>
                             </Setter.Value>
                         </Setter>

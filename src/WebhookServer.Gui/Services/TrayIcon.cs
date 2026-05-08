@@ -16,11 +16,13 @@ public sealed class TrayIcon : IDisposable
     private readonly NotifyIcon _icon;
     private readonly Func<Window?> _resolveMainWindow;
     private readonly Func<Task> _restartServiceAsync;
+    private readonly Action _onExit;
 
-    public TrayIcon(Func<Window?> resolveMainWindow, Func<Task> restartServiceAsync)
+    public TrayIcon(Func<Window?> resolveMainWindow, Func<Task> restartServiceAsync, Action onExit)
     {
         _resolveMainWindow = resolveMainWindow;
         _restartServiceAsync = restartServiceAsync;
+        _onExit = onExit;
 
         _icon = new NotifyIcon
         {
@@ -39,7 +41,7 @@ public sealed class TrayIcon : IDisposable
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("&Restart service", null, async (_, _) => await _restartServiceAsync().ConfigureAwait(false));
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("E&xit", null, (_, _) => Application.Current.Shutdown());
+        menu.Items.Add("E&xit", null, (_, _) => _onExit());
         return menu;
     }
 
