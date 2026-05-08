@@ -50,7 +50,9 @@ if (-not (Test-Path -LiteralPath $BinaryPath)) {
 
 # sc.exe argv format: "key= value" — space AFTER equals, none before.
 $obj = $ServiceAccount
-$existing = sc.exe query $ServiceName 2>$null
+# Get-Service returns $null when the service doesn't exist; sc.exe query is unreliable
+# because it writes a FAILED line to stdout that makes truthy checks pass.
+$existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 
 if ($existing) {
     Write-Host "Service '$ServiceName' already exists; updating binPath and account."
@@ -60,8 +62,10 @@ if ($existing) {
         'obj=', $obj
     )
     if ($Password) { $configArgs += @('password=', $Password) }
-    sc.exe @configArgs | Out-Null
+    sc.exe @configArgs
+    if ($LASTEXITCODE -ne 0) { throw "sc.exe config failed with exit code $LASTEXITCODE" }
 } else {
+    Write-Host "Creating service '$ServiceName'..."
     $createArgs = @(
         'create', $ServiceName,
         'binPath=', "`"$BinaryPath`"",
@@ -70,14 +74,17 @@ if ($existing) {
         'obj=', $obj
     )
     if ($Password) { $createArgs += @('password=', $Password) }
-    sc.exe @createArgs | Out-Null
+    sc.exe @createArgs
+    if ($LASTEXITCODE -ne 0) { throw "sc.exe create failed with exit code $LASTEXITCODE" }
 }
 
 # Configure failure recovery: restart the service on first/second failure, reset count after a day.
-sc.exe failure $ServiceName reset= 86400 actions= restart/5000/restart/5000/restart/5000 | Out-Null
+sc.exe failure $ServiceName reset= 86400 actions= restart/5000/restart/5000/restart/5000
+if ($LASTEXITCODE -ne 0) { Write-Warning "sc.exe failure returned $LASTEXITCODE (recovery actions may not be set)" }
 
 Write-Host "Starting service '$ServiceName'..."
-sc.exe start $ServiceName | Out-Null
+sc.exe start $ServiceName
+if ($LASTEXITCODE -ne 0) { throw "sc.exe start failed with exit code $LASTEXITCODE — check Event Viewer (Windows Logs > Application) for details" }
 
 Start-Sleep -Seconds 1
 sc.exe query $ServiceName
