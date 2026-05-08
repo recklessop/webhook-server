@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -11,19 +12,48 @@ public partial class MainWindow : Window
     private readonly TrayIcon _tray;
     private readonly MainViewModel _vm;
 
+    /// <summary>
+    /// Set to true when the user has explicitly asked to quit (File -> Exit or
+    /// Tray -> Exit). The OnClosing handler reads this to decide whether to
+    /// actually let the window close or hide it to the tray.
+    /// </summary>
+    public bool ExitForReal { get; set; }
+
     public MainWindow()
     {
         InitializeComponent();
         _vm = new MainViewModel(new AdminPipeClient());
         DataContext = _vm;
+        _vm.RealExitRequested += OnRealExitRequested;
 
         _tray = new TrayIcon(
             resolveMainWindow: () => Application.Current.MainWindow,
-            restartServiceAsync: async () => await new AdminPipeClient().RestartListenerAsync());
+            restartServiceAsync: async () => await new AdminPipeClient().RestartListenerAsync(),
+            onExit: OnRealExitRequested);
 
         Loaded += async (_, _) => await _vm.RefreshCommand.ExecuteAsync(null);
         StateChanged += OnStateChanged;
-        Closed += (_, _) => _tray.Dispose();
+        Closing += OnClosing;
+    }
+
+    private void OnClosing(object? sender, CancelEventArgs e)
+    {
+        if (ExitForReal)
+        {
+            _tray.Dispose();
+            return;
+        }
+        // Treat the X button / Alt+F4 like a minimize: hide to tray, keep the
+        // process alive so the tray icon persists.
+        e.Cancel = true;
+        Hide();
+        ShowInTaskbar = false;
+    }
+
+    private void OnRealExitRequested()
+    {
+        ExitForReal = true;
+        Application.Current.Shutdown();
     }
 
     private void OnStateChanged(object? sender, EventArgs e)

@@ -286,10 +286,14 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>Raised when the user picks File -> Exit. MainWindow flips its
+    /// ExitForReal flag and shuts down, bypassing the X-hides-to-tray logic.</summary>
+    public event Action? RealExitRequested;
+
     [RelayCommand]
     private void Exit()
     {
-        Application.Current.Shutdown();
+        RealExitRequested?.Invoke();
     }
 
     [RelayCommand]
