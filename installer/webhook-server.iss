@@ -55,6 +55,7 @@ Source: "{#RepoRoot}publish\service\*"; DestDir: "{app}"; Flags: ignoreversion r
 Source: "{#RepoRoot}publish\gui\*";     DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#RepoRoot}scripts\install-service.ps1";   DestDir: "{app}\scripts"; Flags: ignoreversion
 Source: "{#RepoRoot}scripts\uninstall-service.ps1"; DestDir: "{app}\scripts"; Flags: ignoreversion
+Source: "{#RepoRoot}scripts\examples\*"; DestDir: "{app}\scripts\examples"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#RepoRoot}README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#RepoRoot}docs\*"; DestDir: "{app}\docs"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#RepoRoot}resources\webhook-server.ico"; DestDir: "{app}"; Flags: ignoreversion

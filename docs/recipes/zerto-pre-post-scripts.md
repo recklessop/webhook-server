@@ -1,220 +1,243 @@
-# Recipe: Zerto pre/post scripts → AD / DNS update
+# Recipe: Zerto failover post-script → DNS update + service checks
 
-This is the canonical reason Webhook Server exists. Zerto's failover, move, and clone operations support pre- and post-scripts — but those scripts run on the Zerto Virtual Manager (ZVM), not on the destination domain controller or DNS server. To touch AD or DNS during a failover you need either:
+This is the canonical reason Webhook Server exists.
 
-- A bastion / utility host with the right modules and credentials installed (and you accept the maintenance burden of keeping its scripts in sync)
-- **A webhook on a Windows host** — Zerto's pre/post calls a single URL, and the webhook server runs the right PowerShell on the right machine with the right identity. This page is about that.
+When Zerto fails a VM over from production to DR, the VM boots fine — but **the things around it** often need attention: DNS records still point at the production IP, dependent services need to be checked, on-call needs a heads-up. Zerto pre/post scripts run on the **Zerto Virtual Manager**, not on a domain controller and not necessarily with admin rights to the things that need fixing. So you want a single webhook URL that the post-script hits, and a Windows host on the DR side that does the actual work with the right identity.
 
 ## What we're building
 
-A Zerto pre/post script POSTs to `http://webhooks.contoso.local:8080/hook/dr-failover-prep` with a JSON body identifying the VPG and target VMs. The webhook server, running on a domain-joined utility host as a gMSA with delegated AD rights, runs PowerShell that:
+Zerto's post-recovery script (a one-shot PowerShell file pointing at curl) calls `http://webhook.dr.contoso.local:8080/hook/post-failover` with a JSON body identifying the VPG and operation. The Webhook Server, running on a DR-side Windows host as a gMSA with delegated AD/DNS rights, runs PowerShell that:
 
-1. Updates AD computer object descriptions to indicate they're now at the DR site
-2. Updates DNS A records to point `app01.contoso.local` and friends at the new (DR) IPs
-3. Posts a result line to a Teams channel
-4. Returns 200 with the summary so it shows up in Zerto's pre/post script log
+1. Updates DNS A records to point the failed-over hostnames at their DR IPs
+2. Waits for the failed-over VM to come up (ping + WinRM probe)
+3. Connects to the VM via PowerShell remoting and starts/checks critical services
+4. Sends a Teams notification with the result
 
-It's about ~30 lines of PowerShell on the server side and 3 lines of script in Zerto.
+The endpoint is **Async** so the Zerto script returns in milliseconds — no risk of timing out Zerto's failover sequence even if the actions take minutes. The script's full output ends up in the webhook log and (optionally) in an outbound callback.
 
-## Prerequisites
+## Why curl and not Invoke-WebRequest?
 
-On the webhook host:
+Zerto's PowerShell runner is intentionally minimal — many environments run an older Windows on the ZVM and don't have full PowerShell modules installed. `curl.exe` ships with Windows 10 1803+ and Server 2019+ and works without any modules. Plus, calling an HTTP endpoint with `curl.exe` doesn't depend on the version of `Invoke-WebRequest` shipped with the host's PowerShell.
 
-- Webhook Server installed (see [Installation](../installation.md))
-- The host is domain-joined
-- The service account has the **AD permissions** it needs. We'll configure this two ways below — the simple way (LocalSystem + delegated rights to the machine account) and the production way (gMSA).
-- DNS PowerShell module installed if you'll modify DNS: `Install-WindowsFeature RSAT-DNS-Server` (Server) or RSAT installed (Win 10/11).
-- AD PowerShell module: `Install-WindowsFeature RSAT-AD-PowerShell` (Server).
+## 1. The Zerto post-script (client side)
 
-On the Zerto side:
+A ready-to-use script ships in this repo at [`scripts/examples/zerto-post-failover.ps1`](../../scripts/examples/zerto-post-failover.ps1). Copy it to the ZVM, edit `$WebhookUrl` and the bearer-token path at the top, and wire it into the VPG:
 
-- ZVM 8.x or 9.x (this works with both)
-- A Virtual Protection Group (VPG) you want to wire up
+> **VPG settings → Recovery → Scripts → Post-Recovery Script**
+> Path: `C:\Scripts\zerto-post-failover.ps1`
+> Parameters: *(leave empty)*
 
-## 1. Plan the script and the inputs
+The script is ~50 lines and only depends on `curl.exe` + a token file readable by the ZVM service account.
 
-What does the script need to know? At minimum:
+The flow:
 
-- **VPG name** — Zerto exposes this as a parameter to the pre/post script
-- **VM names** — likewise
-- **Target IPs** — depending on your failover topology, these may be static (DR network has known IPs) or known after Zerto reconfigures the IP
-
-Decide what travels in the request body and what's hardcoded. A pragmatic split:
-
-- Hardcoded (in the PowerShell script on the webhook host): zone name, AD OU, Teams webhook URL, mapping table from VM hostname → target IP
-- Sent in the body: VPG name, list of VM names, an "operation" field (`failover`, `move`, `failback`, etc.)
-
-Example body the Zerto script will send:
-
-```json
-{
-  "operation": "failover",
-  "vpg": "App-Production",
-  "vms": ["app01", "app02", "db01"]
-}
+```
+Zerto VPG failover starts
+   |
+   +-- VM is brought up at DR site
+   |
+   +-- Zerto post-script fires:
+   |     curl POST http://webhook.dr/hook/post-failover  (async, returns 202 in ~50ms)
+   |
+   +-- Zerto sees success, finishes the failover and reports done
+                                                    |
+                       (meanwhile, on the webhook server)
+                                                    |
+                       running PowerShell for several minutes:
+                         - update DNS
+                         - wait for VM ready
+                         - check services on VM
+                         - notify Teams
 ```
 
-## 2. Write the PowerShell script on the webhook host
+## 2. The server-side script (does the actual work)
 
-Save this as `C:\Scripts\dr-failover-prep.ps1` on the webhook host:
+Save this on the webhook host as `C:\Scripts\post-failover-handler.ps1`:
 
 ```powershell
 [CmdletBinding()]
 param()
-
 $ErrorActionPreference = 'Stop'
 
-# Read the body from stdin (the webhook server pipes the JSON in for us when
-# StdinJson is enabled).
 $body = $input | ConvertFrom-Json
 
-# Hardcoded site config - edit for your environment.
+# ---------- environment specifics; edit for your site ----------
 $dnsServer    = 'dc01.contoso.local'
 $forwardZone  = 'contoso.local'
-$adOu         = 'OU=Servers,DC=contoso,DC=local'
-$teamsWebhook = 'https://contoso.webhook.office.com/...'   # one-way, no secret to leak
+$teamsWebhook = 'https://contoso.webhook.office.com/...'
 $drIpMap      = @{
     'app01' = '10.42.10.11'
     'app02' = '10.42.10.12'
     'db01'  = '10.42.10.21'
 }
+$serviceMap   = @{
+    'app01' = @('W3SVC','MyAppSvc')
+    'app02' = @('W3SVC','MyAppSvc')
+    'db01'  = @('MSSQLSERVER','SQLAgent')
+}
+# ---------------------------------------------------------------
+
+# Default the VM list to "all VMs we know about" if the post-script didn't
+# tell us, so the same handler works without having to embed the VM list in
+# every Zerto post-script.
+$vms = if ($body.vms) { $body.vms } else { $drIpMap.Keys }
 
 $summary = @()
 
-foreach ($vm in $body.vms) {
+foreach ($vm in $vms) {
     if (-not $drIpMap.ContainsKey($vm)) {
-        $summary += "skip $vm - no DR IP mapping"
+        $summary += "skip  $vm  (no DR IP mapping in handler)"
         continue
     }
-    $newIp = $drIpMap[$vm]
+    $ip = $drIpMap[$vm]
 
-    # 1. Update DNS A record (delete + recreate is the simplest reliable path)
-    $existing = Get-DnsServerResourceRecord -ZoneName $forwardZone -Name $vm `
-                  -RRType A -ComputerName $dnsServer -ErrorAction SilentlyContinue
-    if ($existing) {
-        Remove-DnsServerResourceRecord -ZoneName $forwardZone -Name $vm `
-            -RRType A -RecordData $existing.RecordData.IPv4Address `
-            -ComputerName $dnsServer -Force
+    # 1. DNS - delete + re-add the A record
+    try {
+        $existing = Get-DnsServerResourceRecord -ZoneName $forwardZone -Name $vm `
+                      -RRType A -ComputerName $dnsServer -ErrorAction SilentlyContinue
+        if ($existing) {
+            Remove-DnsServerResourceRecord -ZoneName $forwardZone -Name $vm `
+                -RRType A -RecordData $existing.RecordData.IPv4Address `
+                -ComputerName $dnsServer -Force
+        }
+        Add-DnsServerResourceRecordA -ZoneName $forwardZone -Name $vm `
+            -IPv4Address $ip -ComputerName $dnsServer -TimeToLive 00:05:00
+        $summary += "dns   $vm -> $ip"
+    } catch {
+        $summary += "DNS!  $vm  $($_.Exception.Message)"
+        continue
     }
-    Add-DnsServerResourceRecordA -ZoneName $forwardZone -Name $vm `
-        -IPv4Address $newIp -ComputerName $dnsServer -TimeToLive 00:05:00
 
-    # 2. Update AD computer description so on-call can see at a glance
-    Set-ADComputer -Identity $vm -Description "[DR-$($body.operation)] $(Get-Date -Format s)"
+    # 2. Wait for the VM to be reachable (up to 5 minutes)
+    $deadline = (Get-Date).AddMinutes(5)
+    $reachable = $false
+    while ((Get-Date) -lt $deadline) {
+        if (Test-Connection -ComputerName $ip -Count 1 -Quiet -ErrorAction SilentlyContinue) {
+            try {
+                # Quick WinRM probe; succeeds when the VM has finished booting
+                Invoke-Command -ComputerName $ip -ScriptBlock { $true } -ErrorAction Stop | Out-Null
+                $reachable = $true
+                break
+            } catch { Start-Sleep -Seconds 10 }
+        } else {
+            Start-Sleep -Seconds 10
+        }
+    }
+    if (-not $reachable) {
+        $summary += "wait! $vm  not reachable after 5 minutes"
+        continue
+    }
 
-    $summary += "ok   $vm -> $newIp"
+    # 3. Check + start critical services on the VM
+    if ($serviceMap.ContainsKey($vm)) {
+        $svcReport = Invoke-Command -ComputerName $ip -ArgumentList @(,$serviceMap[$vm]) -ScriptBlock {
+            param($services)
+            $report = @()
+            foreach ($s in $services) {
+                $svc = Get-Service -Name $s -ErrorAction SilentlyContinue
+                if (-not $svc) { $report += "$s : missing"; continue }
+                if ($svc.Status -ne 'Running') {
+                    Start-Service $s
+                    Start-Sleep -Seconds 2
+                    $svc.Refresh()
+                }
+                $report += "$s : $($svc.Status)"
+            }
+            return $report
+        }
+        $summary += "svc   $vm : $($svcReport -join ', ')"
+    } else {
+        $summary += "svc   $vm  (no services configured)"
+    }
 }
 
-# 3. Notify Teams
-$msg = @{
-    text = "Webhook DR prep for VPG **$($body.vpg)** ($($body.operation)):`n" +
-           ($summary -join "`n")
+# 4. Notify Teams
+$teamsBody = @{
+    text = "Webhook post-failover for VPG **$($body.vpg)**:`n" + ($summary -join "`n")
 } | ConvertTo-Json
-Invoke-RestMethod -Uri $teamsWebhook -Method POST -ContentType 'application/json' -Body $msg | Out-Null
+try {
+    Invoke-RestMethod -Uri $teamsWebhook -Method POST -ContentType 'application/json' -Body $teamsBody | Out-Null
+} catch {
+    $summary += "teams! notification failed: $($_.Exception.Message)"
+}
 
-# 4. Print the summary so Zerto's pre/post script log captures it
+# Return the summary so it shows up in the webhook log + outbound callback
 $summary -join "`n"
 ```
 
-A few choices worth calling out:
+Two things to call out:
 
-- **`$input | ConvertFrom-Json`** — Webhook Server pipes the request body into the script via stdin when "JSON body to stdin" is ticked. `$input` is PowerShell's automatic variable for pipeline input.
-- **`$ErrorActionPreference = 'Stop'`** — turn cmdlet warnings into terminating errors so the script exits non-zero on real problems. Webhook Server then returns 502 (configurable via "Fail on non-zero exit") and Zerto sees the failure.
-- **Two-way Teams notification but one-way return** — the script's stdout becomes the HTTP response. Zerto logs it. The Teams notification is a separate Invoke-RestMethod.
+- **PowerShell remoting to the VM** uses the gMSA's network identity (or whoever the service runs as). Make sure the gMSA / service account can `Invoke-Command` to the failed-over hosts — usually that means the account is a local admin on the target VMs, or you've configured constrained delegation.
+- **WinRM** must be enabled on the failed-over VMs for the remoting calls to work. `Enable-PSRemoting` is the simplest, but most prod environments configure WinRM via Group Policy.
 
 ## 3. Configure the endpoint in the GUI
 
-In Webhook Server's GUI, **File → New endpoint**:
+**File → New endpoint:**
 
 | Section | Setting | Value |
 |---|---|---|
-| Identity | Slug | `dr-failover-prep` |
-| Identity | Description | "Zerto pre-script: update AD/DNS during failover" |
+| Identity | Slug | `post-failover` |
+| Identity | Description | "Zerto post-recovery: DNS + service checks" |
 | Auth | Mode | **Bearer** |
-| Auth | Bearer secret | generate a 32-byte random string; copy it for the Zerto script |
-| Allowed clients | (one per line) | `10.0.0.0/8` (your ZVM's network) |
+| Auth | Bearer secret | generate a 32-byte random string; copy it for the Zerto script's token file |
+| Allowed clients | (one per line) | `10.0.0.0/8` *(your ZVM's network)* |
 | Executor | Type | **Windows PowerShell** |
-| Executor | Script path | `C:\Scripts\dr-failover-prep.ps1` |
+| Executor | Script path | `C:\Scripts\post-failover-handler.ps1` |
 | Data passing | JSON body to stdin | ✓ |
-| Data passing | Headers/query as env vars | ✗ |
-| Run as | Identity | **Service** if the service is running as a gMSA with AD rights, otherwise **SpecificUser** with a delegated account |
-| Response | Mode | **Sync** |
-| Response | Timeout (sec) | `60` |
-| Response | Fail on non-zero exit | ✓ |
+| Run as | Identity | **Service** if the service runs under a gMSA with the right rights, otherwise **SpecificUser** with a delegated account |
+| Response | Mode | **Async** ← critical: this is what makes the Zerto script non-blocking |
+| Response | Timeout (sec) | `600` *(this is the cap on the long-running handler script, not the Zerto-facing response)* |
+| Response | Fail on non-zero exit | unticked *(async hooks have no caller to receive a 502)* |
 
-Save. Right-click the row → **Copy URL** to grab the full URL, e.g. `http://webhooks.contoso.local:8080/hook/dr-failover-prep`.
+Save. Right-click the row → **Copy URL** to grab `http://webhook.dr.contoso.local:8080/hook/post-failover` and paste it into `$WebhookUrl` at the top of the Zerto-side script.
 
-> **Why Bearer auth and not None?** Even though the IP allowlist limits who can reach this endpoint, the Bearer token is a defense-in-depth layer. If someone managed to spoof or get on the trusted network, they still need the token. Generate it once, store it in a secrets manager (or in Zerto's encrypted script parameters), and never email it.
+> **Why Bearer instead of HMAC?** Both work. Bearer is simpler — drop the token in a file on the ZVM that's readable by the ZVM service account and you're done. HMAC requires the Zerto-side script to compute a signature, which is doable but adds a few lines of code. Pick what fits your environment.
 
-## 4. The Zerto pre/post script
+## 4. Wire up the bearer token
 
-Zerto pre/post scripts are PowerShell files placed on the ZVM. The path varies by Zerto version; in 9.x it's typically `C:\Program Files\Zerto\Zerto Virtual Replication\Scripts\`.
-
-Create `dr-failover-prep.ps1` on the ZVM:
+Place the bearer token in a file the ZVM service account can read (and nobody else):
 
 ```powershell
-# Zerto passes context as parameters/environment - exact names vary by version.
-# Document yours; this is illustrative.
-param(
-    [string]$VpgName = $env:ZertoVPGName
-)
-
-$webhookUrl = 'http://webhooks.contoso.local:8080/hook/dr-failover-prep'
-$bearer     = 'paste-the-bearer-secret-here'  # store via Zerto secret param if available
-
-# Build the body. In a real script, list the VMs by querying Zerto's API or by
-# convention from the VPG name.
-$body = @{
-    operation = 'failover'
-    vpg       = $VpgName
-    vms       = @('app01','app02','db01')
-} | ConvertTo-Json
-
-$response = Invoke-RestMethod -Method POST -Uri $webhookUrl -Body $body `
-              -ContentType 'application/json' -TimeoutSec 90 `
-              -Headers @{ Authorization = "Bearer $bearer" }
-
-# Print whatever the webhook returned to Zerto's log.
-$response.stdout
+# on the ZVM, from elevated PowerShell
+$token = (New-Guid).ToString('N')   # or paste the value from the GUI
+$tokenPath = 'C:\ProgramData\Zerto\webhook-token.txt'
+$token | Out-File -LiteralPath $tokenPath -Encoding utf8 -NoNewline
+icacls $tokenPath /inheritance:r /grant 'NT SERVICE\Zerto Online Services:R' 'BUILTIN\Administrators:F' /T
 ```
 
-Wire this script into your VPG's **Pre-Recovery** or **Post-Recovery** hook in the Zerto UI.
+Adjust the service principal name to whatever Zerto runs as on your version. The script reads from this path automatically; no change needed in the script itself.
 
 ## 5. Test before going live
 
-In a maintenance window, hit the endpoint manually with a fake VPG name to confirm the wiring works:
+In a maintenance window, fire the webhook by hand:
 
 ```powershell
-$body = @{ operation='test'; vpg='SmokeTest'; vms=@('app01') } | ConvertTo-Json
-Invoke-RestMethod -Method POST `
-    -Uri http://webhooks.contoso.local:8080/hook/dr-failover-prep `
-    -Headers @{ Authorization = "Bearer paste-the-secret" } `
-    -ContentType application/json -Body $body
+# from any machine that can reach the webhook server
+$body = @{
+    operation = 'test'
+    vpg       = 'SmokeTest'
+    timestamp = (Get-Date).ToUniversalTime().ToString('o')
+} | ConvertTo-Json -Compress
+
+curl.exe --silent --show-error --max-time 10 -X POST `
+    -H "Authorization: Bearer paste-the-token" `
+    -H "Content-Type: application/json" `
+    -d $body `
+    http://webhook.dr.contoso.local:8080/hook/post-failover
 ```
 
-You should see the summary line(s) come back, AD descriptions update, DNS A records update, and a Teams notification. If anything's off:
-
-- **No response, hang** → check the GUI's log panel. The auto-poll updates every 3 seconds. Look for the run line with the slug + exit code.
-- **401 Unauthorized** → bearer mismatch
-- **403 Forbidden** → IP allowlist blocking you
-- **502 Bad Gateway** → script ran but exited non-zero. The response body has stderr.
-
-After a real failover triggers it, audit by checking the daily log file at `C:\ProgramData\WebhookServer\logs\webhook-YYYYMMDD.log` for the `Run <id> dr-failover-prep ok exit=0` line.
+You'll get back `{"runId":"…","accepted":true}` immediately. Open the Webhook Server GUI and watch the log panel — within 30 seconds or so you'll see lines for the run. Confirm DNS records updated, services on each VM ended in `Running`, and the Teams notification arrived.
 
 ## Variations
 
 ### Different actions for failover vs. failback
 
-Pass an `operation` field in the body and branch on it in the PowerShell. The script above already does this — extend the `switch` to handle `failback` (revert DNS to production IPs, clear DR description, etc.).
+Pass an `operation` field in the body and branch on it. The Zerto-side script already sends `operation = 'failover'`. Add a separate post-failback script (or detect from `$env:ZertoOperationType`) that sends `operation = 'failback'` and have the handler revert DNS to production IPs.
 
 ### Per-VPG endpoints
 
-If you want fine-grained access control per VPG, create one endpoint per VPG and give each its own bearer secret. The GUI's grid handles dozens of endpoints fine.
-
-### Async + callback for long-running work
-
-If your AD/DNS update genuinely takes minutes (e.g., updating thousands of records in a large environment), set the endpoint to **Async** mode. Zerto's pre-script gets `202 Accepted` immediately and continues. Configure the endpoint's **Callback** with a URL that records the result (e.g., another endpoint that logs to a file, or your monitoring system's API).
+If you want fine-grained access control or different actions per VPG, create one endpoint per VPG (`post-failover-app`, `post-failover-db`, …) and give each its own bearer token. The GUI handles dozens of endpoints fine.
 
 ### Audit trail to a SIEM
 
-Configure each endpoint's **Callback** with your SIEM's HTTP collector URL + an HMAC secret. Every run produces a JSON record with runId, exit code, duration, stdout, and stderr — perfect for compliance audit logs.
+Each endpoint can have an outbound **Callback** URL. Configure it with your SIEM's HTTP collector + an HMAC secret, and every run produces a JSON record with runId, exit code, duration, stdout, and stderr — perfect for compliance.

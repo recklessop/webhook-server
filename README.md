@@ -61,10 +61,11 @@ Everything you need to operate the server:
 
 Recipes:
 
-- [Zerto pre/post scripts → AD / DNS update](docs/recipes/zerto-pre-post-scripts.md) ← **canonical use case**
+- [Zerto failover post-script → DNS + service checks](docs/recipes/zerto-pre-post-scripts.md) ← **canonical use case**
 - [GitHub-style HMAC-signed webhook](docs/recipes/github-style-hmac.md)
-- [AD password reset endpoint](docs/recipes/ad-password-reset.md)
 - [Pop UI on the user's desktop](docs/recipes/ui-on-desktop.md)
+
+A ready-to-drop-in Zerto-side script is included at [`scripts/examples/zerto-post-failover.ps1`](scripts/examples/zerto-post-failover.ps1).
 
 ## Requirements
 

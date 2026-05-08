@@ -6,7 +6,7 @@ Webhook Server is a Windows service that runs a script (PowerShell, cmd, or any 
 
 1. [Concepts](concepts.md) — five-minute read on what a webhook is and how this server uses one
 2. [Installation](installation.md) — download, install, first endpoint
-3. [Recipe: Zerto pre/post scripts → AD / DNS update](recipes/zerto-pre-post-scripts.md) — the canonical reason this exists
+3. [Recipe: Zerto failover post-script → DNS + service checks](recipes/zerto-pre-post-scripts.md) — the canonical reason this exists
 
 ## Topical
 
@@ -19,10 +19,11 @@ Webhook Server is a Windows service that runs a script (PowerShell, cmd, or any 
 
 ## Recipes (cookbook style)
 
-- [Zerto pre/post scripts → AD / DNS update](recipes/zerto-pre-post-scripts.md)
+- [Zerto failover post-script → DNS + service checks](recipes/zerto-pre-post-scripts.md) ← canonical use case
 - [GitHub-style HMAC-signed webhook](recipes/github-style-hmac.md)
-- [AD password reset endpoint](recipes/ad-password-reset.md)
 - [Pop UI on the user's desktop](recipes/ui-on-desktop.md)
+
+The flagship Zerto recipe also ships with a **ready-to-use Zerto-side post-script** at [`scripts/examples/zerto-post-failover.ps1`](../scripts/examples/zerto-post-failover.ps1).
 
 ## Reference
 
