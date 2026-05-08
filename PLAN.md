@@ -229,6 +229,35 @@ Order in the request pipeline matters: **IP check runs before auth.** That avoid
 
 This covers GitHub, Stripe, Slack, generic CI patterns by tweaking the four fields.
 
+## Service account
+
+The service itself runs fine under any account — this section is about which account makes sense for the **scripts** the service launches, since they inherit its identity.
+
+| Account | Network identity | When to use |
+|---|---|---|
+| `LocalSystem` (default) | Computer account `DOMAIN\MACHINE$` on a domain-joined host; nothing on a workgroup host | Default. Local-only scripts, or read-only AD queries on a domain-joined machine. Most powerful local account — any webhook script effectively runs as SYSTEM. |
+| `LocalService` | None — no network credentials | **Don't.** Cannot talk to AD or any other remote resource that requires Windows auth. Listed only to rule it out. |
+| `NetworkService` | Computer account, same as LocalSystem | Slightly less local privilege than LocalSystem; same network identity. Rarely worth the switch. |
+| Domain user (`DOMAIN\svc-webhookserver`) | That user | Need write/admin operations against AD (password resets, group changes, OU creates). You own password rotation. |
+| **gMSA** (`DOMAIN\svc-webhookserver$`) | That gMSA | **Recommended for AD-write workloads.** AD generates and rotates the password automatically. Requires domain functional level 2012+ and `Install-ADServiceAccount` on the host. |
+
+Install commands by account type:
+
+```powershell
+# LocalSystem (default)
+sc.exe create WebhookServer binPath= "C:\path\WebhookServer.Service.exe" start= auto
+
+# Domain user
+sc.exe create WebhookServer binPath= "..." obj= "DOMAIN\svc-webhookserver" password= "..." start= auto
+
+# gMSA — note the trailing $ and no password=
+sc.exe create WebhookServer binPath= "..." obj= "DOMAIN\svc-webhookserver$" start= auto
+```
+
+`scripts/install-service.ps1` will accept a `-ServiceAccount` parameter that defaults to `LocalSystem` and accepts a domain user or gMSA name. README will document the gMSA setup once for users who need AD writes from their hooks.
+
+The service code itself makes no assumptions about the account — DPAPI uses `LocalMachine` scope so secret decryption works under any local identity.
+
 ## Secret storage (DPAPI)
 
 Endpoint `Secret` is stored in JSON as `{ "encrypted": "<base64 of ProtectedData.Protect(utf8(secret), null, LocalMachine)>" }`. Decrypt only inside the service when needed. The GUI submits secrets in plaintext over the named pipe (local-machine, ACL-restricted), service encrypts before writing.

@@ -1,0 +1,111 @@
+<Window x:Class="WebhookServer.Gui.Views.ServerSettings"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:WebhookServer.Gui.ViewModels"
+        mc:Ignorable="d"
+        Title="Server Settings" Height="720" Width="600"
+        WindowStartupLocation="CenterOwner"
+        d:DataContext="{d:DesignInstance Type=vm:ServerSettingsViewModel}">
+    <DockPanel Margin="12">
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="Save" Width="80" Margin="0,0,8,0" IsDefault="True" Click="OnSave"/>
+            <Button Content="Cancel" Width="80" IsCancel="True"/>
+        </StackPanel>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+            <GroupBox Header="HTTP" Padding="6">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="160"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="HTTP port" VerticalAlignment="Center"/>
+                    <TextBox Grid.Column="1" Text="{Binding HttpPort, UpdateSourceTrigger=PropertyChanged}"/>
+                </Grid>
+            </GroupBox>
+
+            <GroupBox Header="Network" Padding="6" Margin="0,8,0,0">
+                <StackPanel>
+                    <CheckBox Content="Listen on all interfaces (0.0.0.0 + ::)" IsChecked="{Binding ListenAllInterfaces}"/>
+                    <TextBlock Foreground="Gray" FontStyle="Italic" FontSize="11" Margin="20,2,0,0"
+                               Text="Uncheck to bind only to the addresses you select below."/>
+                    <ItemsControl ItemsSource="{Binding Addresses}" Margin="20,4,0,0"
+                                  IsEnabled="{Binding ListenAllInterfaces, Converter={StaticResource InvertBool}}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <CheckBox IsChecked="{Binding IsBound}" Margin="0,1,0,1">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding Address}" FontFamily="Consolas" Width="220"/>
+                                        <TextBlock Text="{Binding Label}" Foreground="Gray" Margin="8,0,0,0"/>
+                                    </StackPanel>
+                                </CheckBox>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <Grid Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="160"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Display URL host" VerticalAlignment="Center"/>
+                        <ComboBox Grid.Column="1" IsEditable="True"
+                                  ItemsSource="{Binding DisplayHostChoices}"
+                                  Text="{Binding DisplayHost, UpdateSourceTrigger=PropertyChanged}"
+                                  FontFamily="Consolas"/>
+                    </Grid>
+                    <TextBlock Foreground="Gray" FontStyle="Italic" FontSize="11" Margin="160,2,0,0"
+                               Text="Used in the URL column and Copy URL button. Cosmetic only - doesn't affect what the server actually accepts."/>
+                </StackPanel>
+            </GroupBox>
+
+            <GroupBox Header="HTTPS" Padding="6" Margin="0,8,0,0">
+                <StackPanel>
+                    <CheckBox Content="Enabled" IsChecked="{Binding HttpsEnabled}"/>
+                    <Grid Margin="0,6,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="160"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                            <RowDefinition/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Text="HTTPS port" VerticalAlignment="Center"/>
+                        <TextBox Grid.Column="1" Text="{Binding HttpsPort, UpdateSourceTrigger=PropertyChanged}"/>
+
+                        <TextBlock Grid.Row="1" Text="Mode" VerticalAlignment="Center" Margin="0,4,0,0"/>
+                        <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,4,0,0">
+                            <RadioButton GroupName="HttpsMode" Content="PFX file"
+                                         IsChecked="{Binding HttpsMode, Converter={StaticResource StringEqualsConverter}, ConverterParameter=PfxFile}"
+                                         Tag="PfxFile" Checked="OnModeChecked"/>
+                            <RadioButton GroupName="HttpsMode" Content="Cert store thumbprint" Margin="12,0,0,0"
+                                         IsChecked="{Binding HttpsMode, Converter={StaticResource StringEqualsConverter}, ConverterParameter=Thumbprint}"
+                                         Tag="Thumbprint" Checked="OnModeChecked"/>
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="2" Text="PFX path" VerticalAlignment="Center" Margin="0,4,0,0"/>
+                        <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding PfxPath, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,0"/>
+
+                        <TextBlock Grid.Row="3" Text="PFX password" VerticalAlignment="Center" Margin="0,4,0,0"/>
+                        <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding PfxPassword, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,0" FontFamily="Consolas"/>
+
+                        <TextBlock Grid.Row="4" Text="Thumbprint" VerticalAlignment="Center" Margin="0,4,0,0"/>
+                        <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding Thumbprint, UpdateSourceTrigger=PropertyChanged}" Margin="0,4,0,0"/>
+                    </Grid>
+                </StackPanel>
+            </GroupBox>
+
+            <GroupBox Header="Trusted proxies (one per line, IP or CIDR)" Padding="6" Margin="0,8,0,0">
+                <TextBox Text="{Binding TrustedProxiesText, UpdateSourceTrigger=LostFocus}" AcceptsReturn="True" MinHeight="80" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+            </GroupBox>
+        </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

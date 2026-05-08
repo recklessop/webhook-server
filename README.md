@@ -69,7 +69,31 @@ sc.exe create WebhookServer binPath= "C:\Program Files\WebhookServer\WebhookServ
 sc.exe start  WebhookServer
 ```
 
-`scripts/install-service.ps1` will wrap this once implemented.
+`scripts/install-service.ps1` will wrap this once implemented and will accept a `-ServiceAccount` parameter.
+
+## Service account & Active Directory
+
+The service runs as `LocalSystem` by default — fine for local-only scripts and read-only AD queries (it authenticates to the domain as the computer account). If your webhook scripts need to **modify** AD (password resets, group changes, etc.), run the service under an account with the right delegated rights:
+
+- **Recommended: gMSA** — Active Directory generates and rotates the password automatically.
+  ```powershell
+  # on a DC, once
+  New-ADServiceAccount -Name svc-webhookserver -DNSHostName host.domain.local `
+      -PrincipalsAllowedToRetrieveManagedPassword "DOMAIN\WebhookHosts"
+  # on the webhook host
+  Install-ADServiceAccount svc-webhookserver
+  sc.exe create WebhookServer binPath= "..." obj= "DOMAIN\svc-webhookserver$" start= auto
+  ```
+  Note the trailing `$` and the absence of `password=`.
+
+- **Plain domain user** — works on older domains, but you own password rotation:
+  ```powershell
+  sc.exe create WebhookServer binPath= "..." obj= "DOMAIN\svc-webhookserver" password= "..." start= auto
+  ```
+
+Don't use `LocalService` — it has no network identity and cannot talk to a domain controller.
+
+> Heads up: any account the service runs under is the account your hook scripts run under. `LocalSystem` is the most powerful local account on the machine — treat webhook script contents as privileged.
 
 ## Configuration
 
@@ -78,7 +102,6 @@ The service reads `C:\ProgramData\WebhookServer\config.json`. Edit it through th
 ## Out of scope for v1
 
 - Importing/exporting config across machines (DPAPI LocalMachine scope ties decryption to the host).
-- Outbound webhook delivery / retry queues.
 - Per-endpoint rate limiting.
 - Multi-user RBAC for the GUI.
 - Auto-update.
