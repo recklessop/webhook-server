@@ -9,6 +9,7 @@
     <PackageProjectUrl>https://jpaul.me</PackageProjectUrl>
     <RepositoryUrl>https://github.com/recklessop/webhook-server</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
 
 </Project>
