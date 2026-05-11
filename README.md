@@ -88,4 +88,4 @@ powershell -ExecutionPolicy Bypass -File scripts\build-installer.ps1
 
 ## License
 
-TBD.
+[MIT](LICENSE). Use it for whatever you want, including commercial — just keep the copyright + license notice in copies and don't sue me when it eats your filesystem. No warranty, express or implied.
