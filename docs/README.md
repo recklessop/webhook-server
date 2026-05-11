@@ -6,7 +6,7 @@ Webhook Server is a Windows service that runs a script (PowerShell, cmd, or any 
 
 1. [Concepts](concepts.md) — five-minute read on what a webhook is and how this server uses one
 2. [Installation](installation.md) — download, install, first endpoint
-3. [Recipe: Zerto failover post-script → DNS + service checks](recipes/zerto-pre-post-scripts.md) — the canonical reason this exists
+3. [Recipe: Zerto ZVMA pre/post → notify + VM health check](recipes/zerto-zvma-pre-post.md) — the canonical reason this exists
 
 ## Topical
 
@@ -19,12 +19,11 @@ Webhook Server is a Windows service that runs a script (PowerShell, cmd, or any 
 
 ## Recipes (cookbook style)
 
-- [Zerto failover post-script → DNS + service checks](recipes/zerto-pre-post-scripts.md) ← canonical use case (Windows ZVM)
-- [Zerto ZVMA (Kubernetes) pre/post → notify + VM health check](recipes/zerto-zvma-pre-post.md) — same pattern for the in-cluster scripts-service
+- [Zerto ZVMA (Kubernetes) pre/post → notify + VM health check](recipes/zerto-zvma-pre-post.md) ← canonical use case
 - [GitHub-style HMAC-signed webhook](recipes/github-style-hmac.md)
 - [Pop UI on the user's desktop](recipes/ui-on-desktop.md)
 
-The flagship Zerto recipe ships with a ready-to-use Zerto-side post-script at [`scripts/examples/zerto-post-failover.ps1`](../scripts/examples/zerto-post-failover.ps1). The ZVMA recipe ships with [`zerto-zvma-send.ps1`](../scripts/examples/zerto-zvma-send.ps1) (sender) plus [`zerto-receiver-notify.ps1`](../scripts/examples/zerto-receiver-notify.ps1) and [`zerto-receiver-vm-healthcheck.ps1`](../scripts/examples/zerto-receiver-vm-healthcheck.ps1) (receivers).
+The Zerto ZVMA recipe ships with [`zerto-zvma-send.ps1`](../scripts/examples/zerto-zvma-send.ps1) (sender, runs inside the ZVMA `scripts-service` container) plus [`zerto-receiver-notify.ps1`](../scripts/examples/zerto-receiver-notify.ps1) and [`zerto-receiver-vm-healthcheck.ps1`](../scripts/examples/zerto-receiver-vm-healthcheck.ps1) (receivers, run on the Webhook Server host).
 
 ## Reference
 

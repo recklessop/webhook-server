@@ -1,12 +1,10 @@
-# Recipe: Zerto ZVMA (Kubernetes) pre/post scripts → notify + VM health check
+# Recipe: Zerto ZVMA pre/post scripts → notify + VM health check
 
-> Companion to [Zerto failover post-script → DNS + service checks](zerto-pre-post-scripts.md).
-> That recipe targets the **Windows ZVM** (the older deployment, where the
-> Zerto-side script is a `.ps1` calling `curl.exe`). **This** recipe targets
-> the **ZVMA on Kubernetes** — the newer deployment, where pre/post scripts
-> run inside the in-cluster `scripts-service` container (Linux + pwsh 7).
-> The webhook-server side is the same Windows service in both cases; only
-> the Zerto-side runtime differs.
+> This is the **canonical** Zerto recipe. It targets the **ZVMA on
+> Kubernetes** — the supported deployment — where pre/post scripts run
+> inside the in-cluster `scripts-service` container (Linux + pwsh 7). The
+> webhook-server side is a normal Windows service that does the
+> Windows-domain work the ZVMA container can't reach directly.
 
 ## What we're building
 
