@@ -65,7 +65,7 @@ $mapping.Add('runas-modes.md',                    'Run-As-Modes')
 $mapping.Add('service-account-and-ad.md',         'Service-Account-and-AD')
 $mapping.Add('network-and-security.md',           'Network-and-Security')
 $mapping.Add('troubleshooting.md',                'Troubleshooting')
-$mapping.Add('recipes/zerto-pre-post-scripts.md', 'Recipe-Zerto-Failover')
+$mapping.Add('recipes/zerto-zvma-pre-post.md',    'Recipe-Zerto-ZVMA')
 $mapping.Add('recipes/github-style-hmac.md',      'Recipe-GitHub-HMAC')
 $mapping.Add('recipes/ui-on-desktop.md',          'Recipe-UI-on-Desktop')
 
@@ -94,7 +94,7 @@ function New-Sidebar() {
     }
     $lines += ""
     $lines += "## Recipes"
-    foreach ($key in @('recipes/zerto-pre-post-scripts.md','recipes/github-style-hmac.md','recipes/ui-on-desktop.md')) {
+    foreach ($key in @('recipes/zerto-zvma-pre-post.md','recipes/github-style-hmac.md','recipes/ui-on-desktop.md')) {
         $slug = $mapping[$key]
         $lines += "- [$($slug -replace '^Recipe-' -replace '-', ' ')]($slug)"
     }

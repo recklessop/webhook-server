@@ -76,7 +76,7 @@ The endpoint appears in the grid. Right-click it → **Copy URL**, paste into a 
 { "runId": "...", "exitCode": 0, "durationMs": 134, "stdout": "pong\r\n", ... }
 ```
 
-That's it. Real-world recipes start with [Zerto pre/post scripts → AD / DNS update](recipes/zerto-pre-post-scripts.md).
+That's it. Real-world recipes start with [Zerto ZVMA pre/post → notify + VM health check](recipes/zerto-zvma-pre-post.md).
 
 ## Silent / unattended install
 

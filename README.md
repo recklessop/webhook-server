@@ -61,12 +61,11 @@ Everything you need to operate the server:
 
 Recipes:
 
-- [Zerto failover post-script → DNS + service checks](docs/recipes/zerto-pre-post-scripts.md) ← **canonical use case** (Windows ZVM)
-- [Zerto ZVMA (Kubernetes) pre/post → notify + VM health check](docs/recipes/zerto-zvma-pre-post.md) — same pattern for the in-cluster scripts-service
+- [Zerto ZVMA (Kubernetes) pre/post → notify + VM health check](docs/recipes/zerto-zvma-pre-post.md) ← **canonical use case**
 - [GitHub-style HMAC-signed webhook](docs/recipes/github-style-hmac.md)
 - [Pop UI on the user's desktop](docs/recipes/ui-on-desktop.md)
 
-Ready-to-drop-in Zerto-side scripts are included at [`scripts/examples/zerto-post-failover.ps1`](scripts/examples/zerto-post-failover.ps1) (Windows ZVM) and [`scripts/examples/zerto-zvma-send.ps1`](scripts/examples/zerto-zvma-send.ps1) (ZVMA / Kubernetes); receiver examples for the ZVMA recipe ship as [`zerto-receiver-notify.ps1`](scripts/examples/zerto-receiver-notify.ps1) and [`zerto-receiver-vm-healthcheck.ps1`](scripts/examples/zerto-receiver-vm-healthcheck.ps1).
+The Zerto ZVMA recipe ships ready-to-drop-in scripts: [`scripts/examples/zerto-zvma-send.ps1`](scripts/examples/zerto-zvma-send.ps1) (sender, runs inside the ZVMA `scripts-service` container) plus [`zerto-receiver-notify.ps1`](scripts/examples/zerto-receiver-notify.ps1) and [`zerto-receiver-vm-healthcheck.ps1`](scripts/examples/zerto-receiver-vm-healthcheck.ps1) (receivers, run on the Webhook Server host).
 
 ## Requirements
 
